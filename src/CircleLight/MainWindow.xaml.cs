@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _dataWatcher;
     private long _lastDataVersion;
+    private int _lastLevel = 1;
     private bool _loaded;
     private bool _exiting;
 
@@ -48,6 +49,7 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ScheduleSave();
 
         _vm.Reload(DateTime.Now);
+        _lastLevel = _vm.Level;
 
         _lastDataVersion = _store.GetDataVersion();
         _dataWatcher = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
@@ -195,6 +197,13 @@ public partial class MainWindow : Window
         var offset = TaskScroll.VerticalOffset;
         _store.ResetDailyCounts(DateTime.Now);
         _vm.Reload(DateTime.Now);
+
+        if (_vm.Level != _lastLevel)
+        {
+            if (_vm.Level > _lastLevel) _effects.PlayLevelUp(_vm.Level);
+            _lastLevel = _vm.Level;
+        }
+
         _lastDataVersion = _store.GetDataVersion();
         Dispatcher.BeginInvoke(new Action(() =>
         {

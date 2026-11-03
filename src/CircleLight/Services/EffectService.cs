@@ -34,10 +34,13 @@ public sealed class EffectService
 
     private static readonly FontFamily PixelFont = new("Courier New");
 
+    private static readonly string[] LevelLines = { "干得漂亮！", "再接再厉！", "状态火热！", "继续冲！" };
+
     private readonly Canvas _layer;
     private readonly TranslateTransform _shake = new();
     private readonly Brush _yellow;
     private readonly Brush _magenta;
+    private readonly Brush _cyan;
     private readonly DispatcherTimer _comboTimer;
     private Border? _comboBadge;
     private TextBlock? _comboText;
@@ -51,6 +54,7 @@ public sealed class EffectService
         _layer = layer;
         _yellow = FindBrush("YellowBrush");
         _magenta = FindBrush("MagentaBrush");
+        _cyan = FindBrush("CyanBrush");
         shakeTarget.RenderTransform = _shake;
 
         _comboTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.6) };
@@ -151,6 +155,84 @@ public sealed class EffectService
         Float(rect.Right - 26, rect.Top + 2, "+1", _yellow, 13);
         if (overdue) Float(rect.Right - 30, rect.Top + 18, "RESCUED", _magenta, 9);
         if (targetReached) Float(rect.X + rect.Width / 2, rect.Y + rect.Height + 2, "TARGET CLEAR", _magenta, 10);
+    }
+
+    /// <summary>升级横幅：等级提升时由窗口调用一次。</summary>
+    public void PlayLevelUp(int level)
+    {
+        if (!Enabled) return;
+
+        var banner = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(0xD8, 0x0A, 0x09, 0x18)),
+            BorderBrush = _yellow,
+            BorderThickness = new Thickness(2),
+            Padding = new Thickness(12, 8, 12, 8),
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+        };
+
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = "LEVEL UP!",
+            FontFamily = PixelFont,
+            FontSize = 24,
+            FontWeight = FontWeights.Bold,
+            Foreground = _yellow,
+            TextAlignment = TextAlignment.Center,
+            Effect = new DropShadowEffect
+            {
+                Color = Colors.Black,
+                ShadowDepth = 3,
+                BlurRadius = 0,
+                Opacity = 0.8,
+            },
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = "LV." + level,
+            FontFamily = PixelFont,
+            FontSize = 14,
+            FontWeight = FontWeights.Bold,
+            Foreground = _cyan,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 2, 0, 0),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = LevelLines[(level - 2) % LevelLines.Length],
+            FontFamily = PixelFont,
+            FontSize = 11,
+            Foreground = Brushes.White,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(0, 4, 0, 0),
+        });
+        banner.Child = stack;
+        _layer.Children.Add(banner);
+        banner.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(banner, Math.Max(4, (_layer.ActualWidth - banner.DesiredSize.Width) / 2));
+        Canvas.SetTop(banner, Math.Max(4, _layer.ActualHeight * 0.46));
+
+        var scale = new ScaleTransform(0.6, 0.6);
+        banner.RenderTransform = scale;
+        var duration = Ms(1400);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty,
+            KeyFrames(duration, (0, 0.6), (300, 1.12), (480, 1), (1400, 1)));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+            KeyFrames(duration, (0, 0.6), (300, 1.12), (480, 1), (1400, 1)));
+
+        var fade = new DoubleAnimationUsingKeyFrames { Duration = duration };
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, Ms(0)));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, Ms(150)));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(1, Ms(1000)));
+        fade.KeyFrames.Add(new LinearDoubleKeyFrame(0, Ms(1400)));
+        fade.Completed += (_, _) => _layer.Children.Remove(banner);
+        banner.BeginAnimation(UIElement.OpacityProperty, fade);
+
+        Flash(0.35, _yellow);
+        Shake(4);
+        Burst(new Point(_layer.ActualWidth / 2, _layer.ActualHeight * 0.5), 30, 4);
     }
 
     // ---------- 分层动效 ----------

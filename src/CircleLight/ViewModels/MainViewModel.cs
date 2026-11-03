@@ -21,6 +21,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _xpText = "0/0";
     private string _clearedHeader = "▸ CLEARED 0";
     private string _alertText = "▶ READY";
+    private int _level = 1;
 
     public ObservableCollection<TaskViewModel> ActiveTasks { get; } = new();
     public ObservableCollection<TaskViewModel> ClearedTasks { get; } = new();
@@ -30,6 +31,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string XpText { get => _xpText; private set => Set(ref _xpText, value); }
     public string ClearedHeader { get => _clearedHeader; private set => Set(ref _clearedHeader, value); }
     public string AlertText { get => _alertText; private set => Set(ref _alertText, value); }
+    public int Level { get => _level; private set => Set(ref _level, value); }
     public bool HasActiveTasks { get => _hasActiveTasks; private set => Set(ref _hasActiveTasks, value); }
     public bool HasCleared { get => _hasCleared; private set => Set(ref _hasCleared, value); }
     public bool ShowClearedList { get => _showClearedList; private set => Set(ref _showClearedList, value); }
@@ -54,6 +56,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var total = done + incomplete;
         var level = _store.CountAllCompletions() / 20 + 1;
 
+        Level = level;
         DayText = $"DAY {now.DayOfYear:000} · {now:MM/dd} · LV.{level}";
         XpText = $"{done}/{total}";
 

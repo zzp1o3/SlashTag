@@ -170,7 +170,8 @@ public sealed class TaskStore : IDisposable
 
         if (isChecked)
         {
-            if (!HasCompletionOn(taskId, DateOnly.FromDateTime(now)))
+            // 每次从「未勾选」变成「勾选」都记一条完成：长期待办再来一次、次数任务第二轮达标都算。
+            if (!task.IsChecked)
             {
                 var overdue = task.DueAt.HasValue && now > task.DueAt.Value
                     ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
@@ -247,7 +248,7 @@ public sealed class TaskStore : IDisposable
             cmd.ExecuteNonQuery();
         }
 
-        if (reached && !HasCompletionOn(taskId, DateOnly.FromDateTime(now)))
+        if (reached && !task.IsChecked)
         {
             var overdue = task.DueAt.HasValue && now > task.DueAt.Value
                 ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
@@ -441,15 +442,6 @@ public sealed class TaskStore : IDisposable
         cmd.Parameters.AddWithValue("$id", id);
         using var reader = cmd.ExecuteReader();
         return reader.Read() ? ReadTask(reader) : null;
-    }
-
-    private bool HasCompletionOn(long taskId, DateOnly day)
-    {
-        using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
-        cmd.Parameters.AddWithValue("$id", taskId);
-        cmd.Parameters.AddWithValue("$day", day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0) > 0;
     }
 
     private void InsertCompletion(long taskId, DateTime completedAt, long overdueSeconds)
