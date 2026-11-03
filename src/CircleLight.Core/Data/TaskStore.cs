@@ -193,20 +193,26 @@ public sealed class TaskStore : IDisposable
             }
         }
 
-        // 勾选后不再提醒；取消勾选后重新参与提醒。
+        // 勾选后不再提醒；取消勾选后重新参与提醒。count_date 同步到今天，避免当天的每日刷新把状态清掉。
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             UPDATE tasks
-            SET is_checked = $checked, start_notified = $notified, overdue_notified = $notified
+            SET is_checked = $checked, start_notified = $notified, overdue_notified = $notified,
+                count_date = $day
             WHERE id = $id;
             """;
         cmd.Parameters.AddWithValue("$checked", isChecked ? 1 : 0);
         cmd.Parameters.AddWithValue("$notified", isChecked ? 1 : 0);
+        cmd.Parameters.AddWithValue("$day", Day(now));
         cmd.Parameters.AddWithValue("$id", taskId);
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>跨天清空次数任务的进度与提醒标记；长期待办与普通任务不受影响。</summary>
+    /// <summary>
+    /// 跨天刷新：长期待办与次数任务取消勾选、次数清零、提醒标记复位。
+    /// 用 count_date 做水位，同一天重复调用不会清掉当天刚完成的勾选；
+    /// 应用启动、每次重载和每次 MCP 调用都会补做，跨天关掉再打开也能刷新。
+    /// </summary>
     public void ResetDailyCounts(DateTime now)
     {
         var day = Day(now);
@@ -214,7 +220,8 @@ public sealed class TaskStore : IDisposable
         cmd.CommandText = """
             UPDATE tasks
             SET done_count = 0, is_checked = 0, start_notified = 0, overdue_notified = 0, count_date = $day
-            WHERE deleted_at IS NULL AND target_count > 1
+            WHERE deleted_at IS NULL
+              AND (target_count > 1 OR is_long_term = 1)
               AND (count_date IS NULL OR count_date <> $day);
             """;
         cmd.Parameters.AddWithValue("$day", day);

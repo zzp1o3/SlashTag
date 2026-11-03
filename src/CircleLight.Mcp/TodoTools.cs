@@ -68,7 +68,7 @@ public sealed class TodoTools
         [Description("任务标题，1-500 字")] string title,
         [Description("开始时间，可选；提前 5 分钟提醒")] string? start_at = null,
         [Description("截止时间，可选；到点未完成会提醒并记录超时")] string? due_at = null,
-        [Description("是否长期待办（完成后保留在列表）")] bool long_term = false,
+        [Description("是否长期待办（完成后保留在列表，每天 0 点自动取消勾选）")] bool long_term = false,
         [Description("目标次数，1-99；1 表示普通任务")] int target_count = 1)
     {
         return Guarded(() =>
