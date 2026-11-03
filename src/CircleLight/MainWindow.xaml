@@ -169,7 +169,7 @@
   <Border Background="{StaticResource BgBrush}" Padding="3">
       <Border Background="{StaticResource YellowBrush}" Padding="3">
         <Border Background="{StaticResource PanelGridBrush}">
-          <Grid>
+          <Grid x:Name="Shell">
             <Grid.RowDefinitions>
               <RowDefinition Height="32" />
               <RowDefinition Height="Auto" />
@@ -255,7 +255,7 @@
                           Focusable="False">
               <StackPanel Margin="10,0" HorizontalAlignment="Stretch">
 
-                <ItemsControl ItemsSource="{Binding ActiveTasks}"
+                <ItemsControl x:Name="ActiveList" ItemsSource="{Binding ActiveTasks}"
                               ItemTemplate="{StaticResource ActiveTaskTemplate}" />
 
                 <TextBlock Text="NO QUESTS · 按右上角 + 新建" Margin="6,18,6,10"
@@ -354,6 +354,10 @@
                 </TextBlock.Style>
               </TextBlock>
             </Grid>
+
+            <!-- 动效层：不参与布局与命中测试 -->
+            <Canvas x:Name="EffectLayer" Grid.RowSpan="6" Panel.ZIndex="50"
+                    IsHitTestVisible="False" ClipToBounds="True" />
           </Grid>
         </Border>
       </Border>

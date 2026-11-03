@@ -11,6 +11,9 @@ public partial class TaskEditorWindow : PixelWindow
     private readonly TaskStore _store;
     private readonly TaskRecord? _task;
 
+    /// <summary>本次编辑是否新建了任务（用于播放新增动效）。</summary>
+    public bool Created { get; private set; }
+
     public TaskEditorWindow(TaskStore store, TaskRecord? task = null, string? initialTitle = null)
     {
         InitializeComponent();
@@ -68,6 +71,7 @@ public partial class TaskEditorWindow : PixelWindow
         if (_task is null)
         {
             _store.AddTask(title, start, due, LongTermBox.IsChecked == true, DateTime.Now);
+            Created = true;
         }
         else
         {

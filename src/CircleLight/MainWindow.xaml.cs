@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 
     private readonly TaskStore _store;
     private readonly MainViewModel _vm;
+    private readonly EffectService _effects;
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _dataWatcher;
     private long _lastDataVersion;
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
         _store = store;
         _vm = new MainViewModel(store);
         DataContext = _vm;
+        _effects = new EffectService(EffectLayer, Shell);
 
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
         _saveTimer.Tick += (_, _) =>
@@ -199,11 +201,24 @@ public partial class MainWindow : Window
 
     private void TaskCheck_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is CheckBox { DataContext: TaskViewModel task } box)
+        if (sender is not CheckBox { DataContext: TaskViewModel task } box) return;
+
+        if (box.IsChecked == true)
         {
-            _store.SetChecked(task.Id, box.IsChecked == true, DateTime.Now);
+            var row = ActiveList.ItemContainerGenerator.ContainerFromItem(task) as FrameworkElement;
+            var rect = row is null ? Rect.Empty : _effects.RectOf(row);
+            var snapshot = row is null ? null : EffectService.Capture(row);
+
+            _store.SetChecked(task.Id, true, DateTime.Now);
             ReloadLists();
+
+            if (row is not null)
+                _effects.PlayComplete(rect, snapshot, task.IsOverdue, !task.IsLongTerm);
+            return;
         }
+
+        _store.SetChecked(task.Id, false, DateTime.Now);
+        ReloadLists();
     }
 
     private void ClearedCheck_Click(object sender, RoutedEventArgs e)
@@ -287,6 +302,7 @@ public partial class MainWindow : Window
         _store.AddTask(title, null, null, isLongTerm: false, DateTime.Now);
         QuickAddBox.Clear();
         ReloadLists(scrollToTop: true);
+        PlayAddForNewest();
         QuickAddBox.Focus();
     }
 
@@ -295,10 +311,24 @@ public partial class MainWindow : Window
         var dialog = new TaskEditorWindow(_store, initialTitle: QuickAddBox.Text.Trim()) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
+            var created = dialog.Created;
             QuickAddBox.Clear();
             HideQuickAdd();
             ReloadLists(scrollToTop: true);
+            if (created) PlayAddForNewest();
         }
+    }
+
+    /// <summary>新增的任务排在最前（id 倒序），刷新后对它播放入场动效。</summary>
+    private void PlayAddForNewest()
+    {
+        if (_vm.ActiveTasks.Count == 0) return;
+        var item = _vm.ActiveTasks[0];
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (ActiveList.ItemContainerGenerator.ContainerFromItem(item) is FrameworkElement row)
+                _effects.PlayAdd(row);
+        }), DispatcherPriority.Loaded);
     }
 
     private void ClearedToggle_Click(object sender, RoutedEventArgs e) => _vm.ToggleCleared();
