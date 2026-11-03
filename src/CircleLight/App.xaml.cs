@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CircleLight.Data;
 using CircleLight.Services;
+using CircleLight.Storage;
 using CircleLight.Views;
 using CommunityToolkit.WinUI.Notifications;
 
@@ -41,9 +42,7 @@ public partial class App : System.Windows.Application
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
             Log("unhandled: " + args.ExceptionObject);
 
-        var dataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CircleLight");
-        _store = new TaskStore(Path.Combine(dataDir, "circlelight.db"));
+        _store = new TaskStore(AppPaths.DatabasePath);
 
         var window = new MainWindow(_store);
         MainWindow = window;
@@ -117,8 +116,7 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CircleLight");
+            var dir = AppPaths.DataDirectory;
             Directory.CreateDirectory(dir);
             File.AppendAllText(Path.Combine(dir, "error.log"),
                 $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");

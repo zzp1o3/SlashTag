@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     private readonly TaskStore _store;
     private readonly MainViewModel _vm;
     private readonly DispatcherTimer _saveTimer;
+    private readonly DispatcherTimer _dataWatcher;
+    private long _lastDataVersion;
     private bool _loaded;
     private bool _exiting;
 
@@ -42,6 +44,17 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => ScheduleSave();
 
         _vm.Reload(DateTime.Now);
+
+        _lastDataVersion = _store.GetDataVersion();
+        _dataWatcher = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _dataWatcher.Tick += (_, _) =>
+        {
+            var version = _store.GetDataVersion();
+            if (version == _lastDataVersion) return;
+            _lastDataVersion = version;
+            ReloadLists();
+        };
+        _dataWatcher.Start();
     }
 
     public void BindReminders(ReminderService reminders)
@@ -72,6 +85,7 @@ public partial class MainWindow : Window
     public void ExitApp()
     {
         _exiting = true;
+        _dataWatcher.Stop();
         SaveBounds();
         Close();
         System.Windows.Application.Current.Shutdown();
@@ -176,6 +190,7 @@ public partial class MainWindow : Window
     {
         var offset = TaskScroll.VerticalOffset;
         _vm.Reload(DateTime.Now);
+        _lastDataVersion = _store.GetDataVersion();
         Dispatcher.BeginInvoke(new Action(() =>
         {
             TaskScroll.ScrollToVerticalOffset(scrollToTop ? 0 : offset);

@@ -14,8 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageReference Include="CommunityToolkit.WinUI.Notifications" Version="7.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CircleLight.Core\CircleLight.Core.csproj" />
   </ItemGroup>
 
 </Project>

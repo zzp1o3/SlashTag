@@ -1,8 +1,8 @@
-using System.Globalization;
 using System.Windows;
 using CircleLight.Controls;
 using CircleLight.Data;
 using CircleLight.Models;
+using CircleLight.Util;
 
 namespace CircleLight.Views;
 
@@ -88,20 +88,6 @@ public partial class TaskEditorWindow : PixelWindow
         ErrorText.Visibility = Visibility.Visible;
     }
 
-    private static bool TryParseTime(string text, out DateTime? value, out string error)
-    {
-        value = null;
-        error = "";
-        text = text.Trim();
-        if (text.Length == 0) return true;
-
-        if (!DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.None, out var parsed))
-        {
-            error = "无法识别，请用 19:30 或 2026-11-03 19:30。";
-            return false;
-        }
-
-        value = new DateTime(parsed.Year, parsed.Month, parsed.Day, parsed.Hour, parsed.Minute, 0);
-        return true;
-    }
+    private static bool TryParseTime(string text, out DateTime? value, out string error) =>
+        UserTime.TryParse(text, DateTime.Now, out value, out error);
 }

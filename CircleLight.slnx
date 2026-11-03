@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/CircleLight.Core/CircleLight.Core.csproj" />
+    <Project Path="src/CircleLight.Mcp/CircleLight.Mcp.csproj" />
     <Project Path="src/CircleLight/CircleLight.csproj" />
   </Folder>
 </Solution>

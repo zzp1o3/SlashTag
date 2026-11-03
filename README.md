@@ -15,6 +15,7 @@ Windows 桌面像素风待办便签：置顶、可缩放、托盘常驻，所有
 - **历史统计**：按天列出完成时间、是否长期、当时的超时时长，并显示累计完成数与等级（每 20 次完成升 1 级）。
 - **系统集成**：系统托盘常驻、开机自启开关、单实例、记住窗口位置和大小、原生 Windows 通知。
 - **启动补发**：错过的截止提醒会在下次启动时合并成一条汇总通知。
+- **MCP 接口**：11 个标准 MCP 工具，agent 可以查询、新建、改时间、完成、删除任务并读取历史。
 
 ## 运行
 
@@ -52,11 +53,50 @@ dotnet build -c Release
 | 完整编辑 | 双击任务标题，或快速输入框右侧齿轮 |
 | 保存 / 取消 | 回车 / Esc |
 
+## MCP 接口（给 agent 用）
+
+`CircleLight.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `circlelight.db`。工作区配置在 `.zcode/config.json`，ZCode 在会话启动时自动连接；改完配置后新开一个会话即可看到 `circlelight` 服务器的工具。
+
+```powershell
+dotnet build -c Release
+```
+
+| 工具 | 作用 |
+| --- | --- |
+| `list_tasks` | 未完成任务、长期待办、今日已完成、今日进度 |
+| `get_task` | 按 id 读取任务 |
+| `create_task` | 新建任务：title、start_at、due_at、long_term |
+| `update_task` | 修改标题或长期标记 |
+| `set_task_schedule` | 设置/清除开始与截止时间（空字符串清除） |
+| `complete_task` | 勾选完成 |
+| `uncomplete_task` | 撤销勾选（删除今天的完成记录） |
+| `delete_task` | 软删除任务，历史保留 |
+| `list_completed` | 某天（默认今天）的完成记录 |
+| `get_history` | 最近 N 天按天分组的完成记录 |
+| `get_overview` | 今日进度、等级、逾期数量、累计完成数 |
+
+时间格式：`19:30`（今天）、`2026-11-03 19:30`。`start_at` 负责提前 5 分钟提醒，`due_at` 负责超时判断与超时时长记录，两者可以只设一个。工具失败时返回 `{"ok": false, "error": "..."}`。
+
+- 便签开着时，MCP 的修改会在约 1.2 秒内自动刷新到界面。
+- 便签关着时也可以操作，下次打开可见。
+- 提醒仍由便签进程负责：MCP 新建的定时任务会进入同一套提醒轮询。
+
+示例说法：
+
+- 「把明天上午 10 点交周报加进待办，提前 5 分钟提醒我」
+- 「今天完成了哪些事？」
+- 「把写周报标记为完成」
+- 「把今晚跑步的截止时间改到 22:30」
+
 ## 代码结构
 
 ```
-src/CircleLight/
+src/CircleLight.Core/
   Data/TaskStore.cs             SQLite 表结构、任务与完成记录
+  Util/UserTime.cs              用户时间输入解析
+  Util/TimeText.cs              时间与时长展示
+  Storage/AppPaths.cs           数据库路径
+src/CircleLight/
   Services/ReminderService.cs   15 秒轮询、启动补发、跨天刷新
   Services/NotificationService.cs 原生 toast，失败退回应用内提示
   Services/TrayService.cs       托盘图标与菜单（图标运行时绘制）
@@ -64,7 +104,10 @@ src/CircleLight/
   ViewModels/                   主界面、任务行、历史分组
   Views/                        任务编辑、历史、设置、兜底提示
   Styles/Pixel.xaml             颜色、按钮、复选框、滚动条、对话框外壳
-  MainWindow.xaml               便签主界面
+  MainWindow.xaml               便签主界面（含 data_version 自动刷新）
+src/CircleLight.Mcp/
+  Program.cs                    stdio MCP 服务入口
+  TodoTools.cs                  11 个待办工具
 ```
 
 ## 设计记录
@@ -73,6 +116,7 @@ src/CircleLight/
 - [`docs/adr/0001-tech-stack.md`](docs/adr/0001-tech-stack.md)：WPF + SQLite 单文件。
 - [`docs/adr/0002-long-term-tasks.md`](docs/adr/0002-long-term-tasks.md)：长期待办的完成语义。
 - [`docs/adr/0003-opaque-window.md`](docs/adr/0003-opaque-window.md)：为什么放弃分层窗口的硬阴影。
+- [`docs/adr/0004-mcp-server.md`](docs/adr/0004-mcp-server.md)：MCP 独立进程与 GUI 的共享/刷新策略。
 
 ## 已知边界
 

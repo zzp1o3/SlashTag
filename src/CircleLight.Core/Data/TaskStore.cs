@@ -25,6 +25,7 @@ public sealed class TaskStore : IDisposable
 
         _conn = new SqliteConnection($"Data Source={databasePath}");
         _conn.Open();
+        Execute("PRAGMA busy_timeout = 5000;");
         Execute("PRAGMA foreign_keys = ON;");
         EnsureSchema();
     }
@@ -79,13 +80,23 @@ public sealed class TaskStore : IDisposable
 
     public void UpdateTask(long id, string title, DateTime? startAt, DateTime? dueAt, bool isLongTerm)
     {
+        var existing = GetTask(id);
+        if (existing is null) return;
+
+        var timesChanged = existing.StartAt != startAt || existing.DueAt != dueAt;
         using var cmd = _conn.CreateCommand();
-        cmd.CommandText = """
-            UPDATE tasks
-            SET title = $title, start_at = $start, due_at = $due, is_long_term = $long,
-                start_notified = 0, overdue_notified = 0
-            WHERE id = $id AND deleted_at IS NULL;
-            """;
+        cmd.CommandText = timesChanged
+            ? """
+              UPDATE tasks
+              SET title = $title, start_at = $start, due_at = $due, is_long_term = $long,
+                  start_notified = 0, overdue_notified = 0
+              WHERE id = $id AND deleted_at IS NULL;
+              """
+            : """
+              UPDATE tasks
+              SET title = $title, start_at = $start, due_at = $due, is_long_term = $long
+              WHERE id = $id AND deleted_at IS NULL;
+              """;
         cmd.Parameters.AddWithValue("$title", title);
         cmd.Parameters.AddWithValue("$start", ToDb(startAt));
         cmd.Parameters.AddWithValue("$due", ToDb(dueAt));
@@ -264,6 +275,14 @@ public sealed class TaskStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>别的连接提交写入后该值会变化；GUI 用来感知 MCP 服务端的外部修改。</summary>
+    public long GetDataVersion()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "PRAGMA data_version;";
+        return Convert.ToInt64(cmd.ExecuteScalar() ?? 0L);
+    }
+
     public void Dispose() => _conn.Dispose();
 
     public TaskRecord? GetTask(long id)
@@ -272,7 +291,7 @@ public sealed class TaskStore : IDisposable
         cmd.CommandText = """
             SELECT id, title, created_at, start_at, due_at, is_long_term, is_checked,
                    start_notified, overdue_notified
-            FROM tasks WHERE id = $id;
+            FROM tasks WHERE id = $id AND deleted_at IS NULL;
             """;
         cmd.Parameters.AddWithValue("$id", id);
         using var reader = cmd.ExecuteReader();
