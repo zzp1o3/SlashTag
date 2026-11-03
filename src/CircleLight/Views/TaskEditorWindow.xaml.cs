@@ -1,0 +1,107 @@
+using System.Globalization;
+using System.Windows;
+using CircleLight.Controls;
+using CircleLight.Data;
+using CircleLight.Models;
+
+namespace CircleLight.Views;
+
+public partial class TaskEditorWindow : PixelWindow
+{
+    private readonly TaskStore _store;
+    private readonly TaskRecord? _task;
+
+    public TaskEditorWindow(TaskStore store, TaskRecord? task = null, string? initialTitle = null)
+    {
+        InitializeComponent();
+        _store = store;
+        _task = task;
+
+        if (task is not null)
+        {
+            Title = "EDIT QUEST";
+            TitleBox.Text = task.Title;
+            StartBox.Text = task.StartAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
+            DueBox.Text = task.DueAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
+            LongTermBox.IsChecked = task.IsLongTerm;
+        }
+        else
+        {
+            Title = "NEW QUEST";
+            TitleBox.Text = initialTitle ?? "";
+        }
+
+        Loaded += (_, _) =>
+        {
+            TitleBox.Focus();
+            TitleBox.SelectAll();
+        };
+    }
+
+    private void Save_Click(object sender, RoutedEventArgs e)
+    {
+        var title = TitleBox.Text.Trim();
+        if (title.Length == 0)
+        {
+            ShowError("任务标题不能为空。");
+            return;
+        }
+
+        if (!TryParseTime(StartBox.Text, out var start, out var startError))
+        {
+            ShowError("开始时间：" + startError);
+            return;
+        }
+
+        if (!TryParseTime(DueBox.Text, out var due, out var dueError))
+        {
+            ShowError("截止时间：" + dueError);
+            return;
+        }
+
+        if (start.HasValue && due.HasValue && start.Value >= due.Value)
+        {
+            ShowError("开始时间必须早于截止时间。");
+            return;
+        }
+
+        if (_task is null)
+        {
+            _store.AddTask(title, start, due, LongTermBox.IsChecked == true, DateTime.Now);
+        }
+        else
+        {
+            _store.UpdateTask(_task.Id, title, start, due, LongTermBox.IsChecked == true);
+        }
+
+        DialogResult = true;
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = false;
+    }
+
+    private void ShowError(string message)
+    {
+        ErrorText.Text = message;
+        ErrorText.Visibility = Visibility.Visible;
+    }
+
+    private static bool TryParseTime(string text, out DateTime? value, out string error)
+    {
+        value = null;
+        error = "";
+        text = text.Trim();
+        if (text.Length == 0) return true;
+
+        if (!DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.None, out var parsed))
+        {
+            error = "无法识别，请用 19:30 或 2026-11-03 19:30。";
+            return false;
+        }
+
+        value = new DateTime(parsed.Year, parsed.Month, parsed.Day, parsed.Hour, parsed.Minute, 0);
+        return true;
+    }
+}
