@@ -50,7 +50,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ClearedTasks.Add(TaskViewModel.ForCompletion(completion));
 
         var done = _store.CountCompletedToday(now);
-        var incomplete = _store.CountIncompleteActive();
+        var incomplete = _store.CountIncompleteWithoutToday(now);
         var total = done + incomplete;
         var level = _store.CountAllCompletions() / 20 + 1;
 

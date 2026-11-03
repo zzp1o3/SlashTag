@@ -368,10 +368,18 @@ public sealed class TaskStore : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }
 
-    public int CountIncompleteActive()
+    /// <summary>今天还没拿到完成记录的未完成任务；与今日完成数相加时同一任务不会被算两次。</summary>
+    public int CountIncompleteWithoutToday(DateTime now)
     {
         using var cmd = _conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND is_checked = 0;";
+        cmd.CommandText = """
+            SELECT COUNT(*) FROM tasks t
+            WHERE t.deleted_at IS NULL AND t.is_checked = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM completions c
+                  WHERE c.task_id = t.id AND date(c.completed_at) = $day);
+            """;
+        cmd.Parameters.AddWithValue("$day", Day(now));
         return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }
 

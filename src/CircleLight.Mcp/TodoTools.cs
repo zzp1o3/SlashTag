@@ -33,7 +33,7 @@ public sealed class TodoTools
             var tasks = _store.GetActiveTasks();
             var cleared = _store.GetTodayCleared(now);
             var done = _store.CountCompletedToday(now);
-            var incomplete = _store.CountIncompleteActive();
+            var incomplete = _store.CountIncompleteWithoutToday(now);
 
             return Json(new
             {
@@ -301,7 +301,7 @@ public sealed class TodoTools
         {
             var now = DateTime.Now;
             var done = _store.CountCompletedToday(now);
-            var incomplete = _store.CountIncompleteActive();
+            var incomplete = _store.CountIncompleteWithoutToday(now);
             var totalCompletions = _store.CountAllCompletions();
             var active = _store.GetActiveTasks();
             var overdue = active.Count(t =>
