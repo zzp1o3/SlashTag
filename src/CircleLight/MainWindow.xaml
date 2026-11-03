@@ -45,6 +45,24 @@
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="PixelProgressBar" TargetType="ProgressBar">
+      <Setter Property="Height" Value="2" />
+      <Setter Property="Background" Value="{StaticResource CellOffBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource CyanBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Grid>
+              <Border Background="{TemplateBinding Background}" />
+              <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                      Background="{TemplateBinding Foreground}" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <DataTemplate x:Key="ActiveTaskTemplate">
       <Border x:Name="Row" BorderBrush="{StaticResource LineBrush}"
               BorderThickness="0,0,0,2">
@@ -114,18 +132,29 @@
                          FontWeight="Bold" Margin="0,2,0,0" />
             </StackPanel>
 
-            <Border Grid.Column="2" VerticalAlignment="Top" Margin="0,1,0,0"
-                    BorderBrush="{StaticResource YellowBrush}" BorderThickness="1"
-                    Padding="3,0"
-                    Visibility="{Binding ShowTag, Converter={StaticResource BoolToVis}}">
-              <TextBlock Text="★ LONG" FontFamily="Courier New" FontSize="8.5"
-                         Foreground="{StaticResource YellowBrush}" />
-            </Border>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,1,4,0">
+              <Border BorderBrush="{StaticResource CyanBrush}" BorderThickness="1" Padding="3,0"
+                      Margin="0,0,4,0"
+                      Visibility="{Binding IsCounted, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding ProgressText}" FontFamily="Courier New" FontSize="8.5"
+                           Foreground="{StaticResource CyanBrush}" />
+              </Border>
+              <Border BorderBrush="{StaticResource YellowBrush}" BorderThickness="1" Padding="3,0"
+                      Visibility="{Binding ShowTag, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="★ LONG" FontFamily="Courier New" FontSize="8.5"
+                           Foreground="{StaticResource YellowBrush}" />
+              </Border>
+            </StackPanel>
 
             <Button Grid.Column="3" Content="×" Style="{StaticResource RowDeleteButton}"
                     AutomationProperties.Name="{Binding Title, StringFormat=删除任务：{0}}"
                     Click="DeleteTask_Click" ToolTip="删除" />
           </Grid>
+
+          <ProgressBar Style="{StaticResource PixelProgressBar}" Minimum="0" Maximum="1"
+                       Value="{Binding ProgressRatio, Mode=OneWay}"
+                       VerticalAlignment="Bottom" Height="2" IsHitTestVisible="False"
+                       Visibility="{Binding IsCounted, Converter={StaticResource BoolToVis}}" />
         </Grid>
       </Border>
     </DataTemplate>

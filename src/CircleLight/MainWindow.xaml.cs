@@ -36,6 +36,8 @@ public partial class MainWindow : Window
         DataContext = _vm;
         _effects = new EffectService(EffectLayer, Shell);
 
+        _store.ResetDailyCounts(DateTime.Now);
+
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
         _saveTimer.Tick += (_, _) =>
         {
@@ -191,6 +193,7 @@ public partial class MainWindow : Window
     private void ReloadLists(bool scrollToTop = false)
     {
         var offset = TaskScroll.VerticalOffset;
+        _store.ResetDailyCounts(DateTime.Now);
         _vm.Reload(DateTime.Now);
         _lastDataVersion = _store.GetDataVersion();
         Dispatcher.BeginInvoke(new Action(() =>
@@ -209,11 +212,27 @@ public partial class MainWindow : Window
             var rect = row is null ? Rect.Empty : _effects.RectOf(row);
             var snapshot = row is null ? null : EffectService.Capture(row);
 
+            if (task.IsCounted)
+            {
+                var counted = _store.IncrementCount(task.Id, DateTime.Now);
+                ReloadLists();
+                if (row is not null && counted is not null)
+                    _effects.PlayComplete(rect, snapshot, counted.IsChecked && task.IsOverdue, false, counted.IsChecked);
+                return;
+            }
+
             _store.SetChecked(task.Id, true, DateTime.Now);
             ReloadLists();
 
             if (row is not null)
                 _effects.PlayComplete(rect, snapshot, task.IsOverdue, !task.IsLongTerm);
+            return;
+        }
+
+        if (task.IsCounted)
+        {
+            _store.DecrementCount(task.Id, DateTime.Now);
+            ReloadLists();
             return;
         }
 

@@ -63,17 +63,19 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "create_task")]
-    [Description("新建任务。start_at 与 due_at 可留空；支持 19:30（今天）或 2026-11-03 19:30。long_term=true 表示完成后保留。")]
+    [Description("新建任务。start_at 与 due_at 可留空；支持 19:30（今天）或 2026-11-03 19:30。long_term=true 表示完成后保留。target_count>1 表示每日次数任务（如喝水 8 次），达标才记完成、次日清零。")]
     public string CreateTask(
         [Description("任务标题，1-500 字")] string title,
         [Description("开始时间，可选；提前 5 分钟提醒")] string? start_at = null,
         [Description("截止时间，可选；到点未完成会提醒并记录超时")] string? due_at = null,
-        [Description("是否长期待办（完成后保留在列表）")] bool long_term = false)
+        [Description("是否长期待办（完成后保留在列表）")] bool long_term = false,
+        [Description("目标次数，1-99；1 表示普通任务")] int target_count = 1)
     {
         return Guarded(() =>
         {
             var now = DateTime.Now;
             var cleanTitle = ValidateTitle(title);
+            var count = ValidateCount(target_count);
 
             if (!UserTime.TryParse(start_at, now, out var start, out var startError))
                 throw new ArgumentException("开始时间：" + startError);
@@ -81,7 +83,7 @@ public sealed class TodoTools
                 throw new ArgumentException("截止时间：" + dueError);
             ValidateSchedule(start, due);
 
-            var id = _store.AddTask(cleanTitle, start, due, long_term, now);
+            var id = _store.AddTask(cleanTitle, start, due, long_term, now, count);
             var task = _store.GetTask(id) ?? throw new InvalidOperationException("任务创建后无法读取。");
 
             return Json(new { ok = true, task = TaskDto(task, now) });
@@ -89,11 +91,12 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "update_task")]
-    [Description("修改任务的标题或长期标记。只传需要修改的字段；时间请用 set_task_schedule。")]
+    [Description("修改任务的标题、长期标记或目标次数。只传需要修改的字段；时间请用 set_task_schedule。改目标次数会把进度重置为 0。")]
     public string UpdateTask(
         [Description("任务 id")] long id,
         [Description("新标题；不传保持不变")] string? title = null,
-        [Description("是否长期待办；不传保持不变")] bool? long_term = null)
+        [Description("是否长期待办；不传保持不变")] bool? long_term = null,
+        [Description("目标次数，1-99；不传保持不变")] int? target_count = null)
     {
         return Guarded(() =>
         {
@@ -102,8 +105,9 @@ public sealed class TodoTools
 
             var newTitle = title is null ? task.Title : ValidateTitle(title);
             var newLongTerm = long_term ?? task.IsLongTerm;
+            var newCount = target_count is null ? task.TargetCount : ValidateCount(target_count.Value);
 
-            _store.UpdateTask(id, newTitle, task.StartAt, task.DueAt, newLongTerm);
+            _store.UpdateTask(id, newTitle, task.StartAt, task.DueAt, newLongTerm, newCount);
             var updated = _store.GetTask(id) ?? throw new InvalidOperationException("任务更新后无法读取。");
 
             return Json(new { ok = true, task = TaskDto(updated, now) });
@@ -128,7 +132,7 @@ public sealed class TodoTools
                 throw new ArgumentException("截止时间：" + dueError);
             ValidateSchedule(start, due);
 
-            _store.UpdateTask(id, task.Title, start, due, task.IsLongTerm);
+            _store.UpdateTask(id, task.Title, start, due, task.IsLongTerm, task.TargetCount);
             var updated = _store.GetTask(id) ?? throw new InvalidOperationException("任务更新后无法读取。");
 
             return Json(new { ok = true, task = TaskDto(updated, now) });
@@ -136,7 +140,7 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "complete_task")]
-    [Description("勾选完成任务。普通任务进入今日已完成；长期待办保留在列表。已勾选的任务不会重复记录。")]
+    [Description("勾选完成任务。普通任务直接完成；次数任务每次调用 +1，达到目标次数才记为完成。已勾选的任务不会重复记录。")]
     public string CompleteTask([Description("任务 id")] long id)
     {
         return Guarded(() =>
@@ -144,12 +148,32 @@ public sealed class TodoTools
             var now = DateTime.Now;
             var task = _store.GetTask(id) ?? throw new ArgumentException($"任务 {id} 不存在或已删除。");
 
+            if (task.IsCounted)
+            {
+                if (task.IsChecked)
+                    return Json(new { ok = true, already_completed = true, task = TaskDto(task, now) });
+
+                var counted = _store.IncrementCount(id, now)
+                    ?? throw new InvalidOperationException("任务勾选后无法读取。");
+                var reached = counted.IsChecked;
+
+                return Json(new
+                {
+                    ok = true,
+                    counted = true,
+                    done_count = counted.DoneCount,
+                    target_count = counted.TargetCount,
+                    completed = reached,
+                    completed_at = reached ? now.ToString("yyyy-MM-dd HH:mm:ss") : null,
+                    recorded_overdue_seconds = reached ? OverdueSeconds(task, now) : (long?)null,
+                    task = TaskDto(counted, now),
+                });
+            }
+
             if (task.IsChecked)
                 return Json(new { ok = true, already_completed = true, task = TaskDto(task, now) });
 
-            var overdueSeconds = task.DueAt.HasValue && now > task.DueAt.Value
-                ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
-                : 0L;
+            var overdueSeconds = OverdueSeconds(task, now);
 
             _store.SetChecked(id, true, now);
             var updated = _store.GetTask(id) ?? throw new InvalidOperationException("任务勾选后无法读取。");
@@ -165,13 +189,31 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "uncomplete_task")]
-    [Description("撤销任务的勾选。会删除今天的完成记录；更早的历史记录不受影响。")]
+    [Description("撤销任务的勾选。次数任务每次调用 -1，达标后撤销会删除当天的完成记录。")]
     public string UncompleteTask([Description("任务 id")] long id)
     {
         return Guarded(() =>
         {
             var now = DateTime.Now;
             var task = _store.GetTask(id) ?? throw new ArgumentException($"任务 {id} 不存在或已删除。");
+
+            if (task.IsCounted)
+            {
+                if (task.DoneCount == 0)
+                    return Json(new { ok = true, already_pending = true, task = TaskDto(task, now) });
+
+                var counted = _store.DecrementCount(id, now)
+                    ?? throw new InvalidOperationException("任务取消勾选后无法读取。");
+
+                return Json(new
+                {
+                    ok = true,
+                    counted = true,
+                    done_count = counted.DoneCount,
+                    target_count = counted.TargetCount,
+                    task = TaskDto(counted, now),
+                });
+            }
 
             if (!task.IsChecked)
                 return Json(new { ok = true, already_pending = true, task = TaskDto(task, now) });
@@ -297,6 +339,9 @@ public sealed class TodoTools
             overdue_text = overdueSeconds is null
                 ? null
                 : "超时 " + TimeText.Duration(overdueSeconds.Value),
+            target_count = task.TargetCount,
+            done_count = task.DoneCount,
+            progress = task.IsCounted ? $"{task.DoneCount}/{task.TargetCount}" : null,
         };
     }
 
@@ -316,6 +361,17 @@ public sealed class TodoTools
         if (clean.Length > 500) throw new ArgumentException("任务标题不能超过 500 个字符。");
         return clean;
     }
+
+    private static int ValidateCount(int count)
+    {
+        if (count < 1 || count > 99) throw new ArgumentException("目标次数需要在 1-99 之间。");
+        return count;
+    }
+
+    private static long OverdueSeconds(TaskRecord task, DateTime now) =>
+        task.DueAt.HasValue && now > task.DueAt.Value
+            ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
+            : 0L;
 
     private static void ValidateSchedule(DateTime? start, DateTime? due)
     {
@@ -346,6 +402,8 @@ public sealed class TodoTools
         {
             try
             {
+                // 次数任务跨天后先清零，再读或改。
+                _store.ResetDailyCounts(DateTime.Now);
                 return action();
             }
             catch (Exception ex)

@@ -27,6 +27,7 @@ public partial class TaskEditorWindow : PixelWindow
             StartBox.Text = task.StartAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
             DueBox.Text = task.DueAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
             LongTermBox.IsChecked = task.IsLongTerm;
+            CountBox.Text = task.TargetCount.ToString();
         }
         else
         {
@@ -68,14 +69,20 @@ public partial class TaskEditorWindow : PixelWindow
             return;
         }
 
+        if (!int.TryParse(CountBox.Text.Trim(), out var targetCount) || targetCount < 1 || targetCount > 99)
+        {
+            ShowError("目标次数需要在 1-99 之间。");
+            return;
+        }
+
         if (_task is null)
         {
-            _store.AddTask(title, start, due, LongTermBox.IsChecked == true, DateTime.Now);
+            _store.AddTask(title, start, due, LongTermBox.IsChecked == true, DateTime.Now, targetCount);
             Created = true;
         }
         else
         {
-            _store.UpdateTask(_task.Id, title, start, due, LongTermBox.IsChecked == true);
+            _store.UpdateTask(_task.Id, title, start, due, LongTermBox.IsChecked == true, targetCount);
         }
 
         DialogResult = true;

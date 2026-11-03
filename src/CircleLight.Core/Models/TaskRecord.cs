@@ -11,6 +11,12 @@ public sealed class TaskRecord
     public bool IsChecked { get; init; }
     public bool StartNotified { get; init; }
     public bool OverdueNotified { get; init; }
+    public int TargetCount { get; init; } = 1;
+    public int DoneCount { get; init; }
+    public DateTime? CountDate { get; init; }
+
+    /// <summary>次数任务：每天有目标次数，达标才记完成，次日清零。</summary>
+    public bool IsCounted => TargetCount > 1;
 }
 
 public sealed class CompletionRecord

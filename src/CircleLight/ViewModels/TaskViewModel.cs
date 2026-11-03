@@ -16,6 +16,11 @@ public sealed class TaskViewModel : INotifyPropertyChanged
     public bool IsLongTerm { get; }
     public bool IsChecked { get; }
     public bool IsCompletedRow { get; }
+    public int TargetCount { get; }
+    public int DoneCount { get; }
+    public bool IsCounted => TargetCount > 1;
+    public string ProgressText => $"{DoneCount}/{TargetCount}";
+    public double ProgressRatio => TargetCount > 1 ? Math.Clamp((double)DoneCount / TargetCount, 0, 1) : 0;
     public string TimeText { get; }
     public bool HasTimeText => TimeText.Length > 0;
     public bool ShowTag => IsLongTerm && !IsCompletedRow;
@@ -56,6 +61,8 @@ public sealed class TaskViewModel : INotifyPropertyChanged
         DueAt = task.DueAt;
         IsLongTerm = task.IsLongTerm;
         IsChecked = task.IsChecked;
+        TargetCount = task.TargetCount;
+        DoneCount = task.DoneCount;
         TimeText = Fmt.TaskTimes(task.StartAt, task.DueAt);
     }
 
@@ -66,6 +73,7 @@ public sealed class TaskViewModel : INotifyPropertyChanged
         IsLongTerm = completion.IsLongTerm;
         IsChecked = true;
         IsCompletedRow = true;
+        TargetCount = 1;
         WasLate = completion.OverdueSeconds > 0;
         var late = completion.OverdueSeconds > 0
             ? $" · 超时 {Fmt.Duration(completion.OverdueSeconds)}"

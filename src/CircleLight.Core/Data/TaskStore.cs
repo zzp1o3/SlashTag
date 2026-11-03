@@ -60,14 +60,36 @@ public sealed class TaskStore : IDisposable
                 value TEXT NOT NULL
             );
             """);
+
+        EnsureColumn("tasks", "target_count", "INTEGER NOT NULL DEFAULT 1");
+        EnsureColumn("tasks", "done_count", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("tasks", "count_date", "TEXT NULL");
     }
 
-    public long AddTask(string title, DateTime? startAt, DateTime? dueAt, bool isLongTerm, DateTime now)
+    /// <summary>旧库补列：SQLite 的 CREATE TABLE IF NOT EXISTS 不会改已有表。</summary>
+    private void EnsureColumn(string table, string column, string definition)
+    {
+        using (var check = _conn.CreateCommand())
+        {
+            check.CommandText = $"PRAGMA table_info({table});";
+            using var reader = check.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+        }
+
+        Execute($"ALTER TABLE {table} ADD COLUMN {column} {definition};");
+    }
+
+    public long AddTask(string title, DateTime? startAt, DateTime? dueAt, bool isLongTerm, DateTime now, int targetCount = 1)
     {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO tasks (title, created_at, start_at, due_at, is_long_term, is_checked)
-            VALUES ($title, $created, $start, $due, $long, 0);
+            INSERT INTO tasks (title, created_at, start_at, due_at, is_long_term, is_checked,
+                               target_count, done_count, count_date)
+            VALUES ($title, $created, $start, $due, $long, 0, $target, 0, $day);
             SELECT last_insert_rowid();
             """;
         cmd.Parameters.AddWithValue("$title", title);
@@ -75,33 +97,60 @@ public sealed class TaskStore : IDisposable
         cmd.Parameters.AddWithValue("$start", ToDb(startAt));
         cmd.Parameters.AddWithValue("$due", ToDb(dueAt));
         cmd.Parameters.AddWithValue("$long", isLongTerm ? 1 : 0);
+        cmd.Parameters.AddWithValue("$target", targetCount);
+        cmd.Parameters.AddWithValue("$day", Day(now));
         return (long)(cmd.ExecuteScalar() ?? 0L);
     }
 
-    public void UpdateTask(long id, string title, DateTime? startAt, DateTime? dueAt, bool isLongTerm)
+    public void UpdateTask(long id, string title, DateTime? startAt, DateTime? dueAt, bool isLongTerm, int targetCount)
     {
         var existing = GetTask(id);
         if (existing is null) return;
 
         var timesChanged = existing.StartAt != startAt || existing.DueAt != dueAt;
+        var targetChanged = existing.TargetCount != targetCount;
+
+        if (targetChanged)
+        {
+            // 目标次数变了，进度与当天的完成记录一起作废。
+            using var del = _conn.CreateCommand();
+            del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
+            del.Parameters.AddWithValue("$id", id);
+            del.Parameters.AddWithValue("$day", Day(DateTime.Now));
+            del.ExecuteNonQuery();
+        }
+
         using var cmd = _conn.CreateCommand();
-        cmd.CommandText = timesChanged
+        cmd.CommandText = targetChanged
             ? """
               UPDATE tasks
               SET title = $title, start_at = $start, due_at = $due, is_long_term = $long,
-                  start_notified = 0, overdue_notified = 0
+                  target_count = $target, done_count = 0, is_checked = 0,
+                  start_notified = 0, overdue_notified = 0, count_date = $day
               WHERE id = $id AND deleted_at IS NULL;
               """
-            : """
-              UPDATE tasks
-              SET title = $title, start_at = $start, due_at = $due, is_long_term = $long
-              WHERE id = $id AND deleted_at IS NULL;
-              """;
+            : timesChanged
+                ? """
+                  UPDATE tasks
+                  SET title = $title, start_at = $start, due_at = $due, is_long_term = $long,
+                      target_count = $target,
+                      start_notified = 0, overdue_notified = 0
+                  WHERE id = $id AND deleted_at IS NULL;
+                  """
+                : """
+                  UPDATE tasks
+                  SET title = $title, start_at = $start, due_at = $due, is_long_term = $long,
+                      target_count = $target
+                  WHERE id = $id AND deleted_at IS NULL;
+                  """;
         cmd.Parameters.AddWithValue("$title", title);
         cmd.Parameters.AddWithValue("$start", ToDb(startAt));
         cmd.Parameters.AddWithValue("$due", ToDb(dueAt));
         cmd.Parameters.AddWithValue("$long", isLongTerm ? 1 : 0);
+        cmd.Parameters.AddWithValue("$target", targetCount);
         cmd.Parameters.AddWithValue("$id", id);
+        if (targetChanged)
+            cmd.Parameters.AddWithValue("$day", Day(DateTime.Now));
         cmd.ExecuteNonQuery();
     }
 
@@ -151,16 +200,103 @@ public sealed class TaskStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>主列表：未完成的任务 + 长期待办（即使已勾选也保留）。</summary>
+    /// <summary>跨天清空次数任务的进度与提醒标记；长期待办与普通任务不受影响。</summary>
+    public void ResetDailyCounts(DateTime now)
+    {
+        var day = Day(now);
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE tasks
+            SET done_count = 0, is_checked = 0, start_notified = 0, overdue_notified = 0, count_date = $day
+            WHERE deleted_at IS NULL AND target_count > 1
+              AND (count_date IS NULL OR count_date <> $day);
+            """;
+        cmd.Parameters.AddWithValue("$day", day);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>次数任务 +1；达到目标时勾选并写入当天的完成记录。</summary>
+    public TaskRecord? IncrementCount(long taskId, DateTime now)
+    {
+        var task = GetTask(taskId);
+        if (task is null || !task.IsCounted) return task;
+
+        var day = Day(now);
+        var done = task.CountDate is { } date && Day(date) == day ? task.DoneCount : 0;
+        done = Math.Min(done + 1, task.TargetCount);
+        var reached = done >= task.TargetCount;
+
+        using (var cmd = _conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                UPDATE tasks
+                SET done_count = $done, count_date = $day, is_checked = $checked,
+                    start_notified = CASE WHEN $checked = 1 THEN 1 ELSE start_notified END,
+                    overdue_notified = CASE WHEN $checked = 1 THEN 1 ELSE overdue_notified END
+                WHERE id = $id AND deleted_at IS NULL;
+                """;
+            cmd.Parameters.AddWithValue("$done", done);
+            cmd.Parameters.AddWithValue("$day", day);
+            cmd.Parameters.AddWithValue("$checked", reached ? 1 : 0);
+            cmd.Parameters.AddWithValue("$id", taskId);
+            cmd.ExecuteNonQuery();
+        }
+
+        if (reached && !HasCompletionOn(taskId, DateOnly.FromDateTime(now)))
+        {
+            var overdue = task.DueAt.HasValue && now > task.DueAt.Value
+                ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
+                : 0L;
+            InsertCompletion(taskId, now, overdue);
+        }
+
+        return GetTask(taskId);
+    }
+
+    /// <summary>次数任务 −1；若原本已达标，撤销勾选并删除当天的完成记录。</summary>
+    public TaskRecord? DecrementCount(long taskId, DateTime now)
+    {
+        var task = GetTask(taskId);
+        if (task is null || !task.IsCounted) return task;
+
+        var day = Day(now);
+        var done = task.CountDate is { } date && Day(date) == day ? task.DoneCount : 0;
+        if (done == 0) return task;
+
+        if (task.IsChecked)
+        {
+            using var del = _conn.CreateCommand();
+            del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
+            del.Parameters.AddWithValue("$id", taskId);
+            del.Parameters.AddWithValue("$day", day);
+            del.ExecuteNonQuery();
+        }
+
+        using (var cmd = _conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                UPDATE tasks
+                SET done_count = $done, is_checked = 0, start_notified = 0, overdue_notified = 0
+                WHERE id = $id AND deleted_at IS NULL;
+                """;
+            cmd.Parameters.AddWithValue("$done", done - 1);
+            cmd.Parameters.AddWithValue("$id", taskId);
+            cmd.ExecuteNonQuery();
+        }
+
+        return GetTask(taskId);
+    }
+
+    /// <summary>主列表：未完成的任务 + 长期待办 + 次数任务（即使已勾选也保留）。</summary>
     public List<TaskRecord> GetActiveTasks()
     {
         var list = new List<TaskRecord>();
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             SELECT id, title, created_at, start_at, due_at, is_long_term, is_checked,
-                   start_notified, overdue_notified
+                   start_notified, overdue_notified, target_count, done_count, count_date
             FROM tasks
-            WHERE deleted_at IS NULL AND (is_checked = 0 OR is_long_term = 1)
+            WHERE deleted_at IS NULL AND (is_checked = 0 OR is_long_term = 1 OR target_count > 1)
             ORDER BY is_long_term ASC, is_checked ASC, id DESC;
             """;
         using var reader = cmd.ExecuteReader();
@@ -179,6 +315,7 @@ public sealed class TaskStore : IDisposable
             JOIN tasks t ON t.id = c.task_id
             WHERE t.deleted_at IS NULL
               AND t.is_long_term = 0
+              AND t.target_count = 1
               AND date(c.completed_at) = $day
             ORDER BY c.completed_at DESC, c.id DESC;
             """;
@@ -290,7 +427,7 @@ public sealed class TaskStore : IDisposable
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
             SELECT id, title, created_at, start_at, due_at, is_long_term, is_checked,
-                   start_notified, overdue_notified
+                   start_notified, overdue_notified, target_count, done_count, count_date
             FROM tasks WHERE id = $id AND deleted_at IS NULL;
             """;
         cmd.Parameters.AddWithValue("$id", id);
@@ -331,6 +468,9 @@ public sealed class TaskStore : IDisposable
         IsChecked = reader.GetInt32(6) != 0,
         StartNotified = reader.GetInt32(7) != 0,
         OverdueNotified = reader.GetInt32(8) != 0,
+        TargetCount = reader.GetInt32(9),
+        DoneCount = reader.GetInt32(10),
+        CountDate = reader.IsDBNull(11) ? null : FromDay(reader.GetString(11)),
     };
 
     private void Execute(string sql, params (string Name, object Value)[] parameters)
@@ -345,6 +485,15 @@ public sealed class TaskStore : IDisposable
         value.HasValue
             ? value.Value.ToString(TimeFormat, CultureInfo.InvariantCulture)
             : DBNull.Value;
+
+    private static string Day(DateTime value) =>
+        value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static DateTime? FromDay(string? value) =>
+        DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var parsed)
+            ? parsed
+            : null;
 
     private static DateTime? FromDb(string? value) =>
         DateTime.TryParseExact(value, TimeFormat, CultureInfo.InvariantCulture,

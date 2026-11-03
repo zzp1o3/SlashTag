@@ -43,6 +43,8 @@ public sealed class EffectService
     private TextBlock? _comboText;
     private int _combo;
     private DateTime _lastComplete;
+    private bool _comboFlip;
+    private bool _slashFlip;
 
     public EffectService(Canvas layer, FrameworkElement shakeTarget)
     {
@@ -125,7 +127,7 @@ public sealed class EffectService
         Delay(150, () => Dust(rect));
     }
 
-    public void PlayComplete(Rect rect, ImageSource? snapshot, bool overdue, bool split)
+    public void PlayComplete(Rect rect, ImageSource? snapshot, bool overdue, bool split, bool targetReached = false)
     {
         if (!Enabled || rect.IsEmpty) return;
 
@@ -148,6 +150,7 @@ public sealed class EffectService
 
         Float(rect.Right - 26, rect.Top + 2, "+1", _yellow, 13);
         if (overdue) Float(rect.Right - 30, rect.Top + 18, "RESCUED", _magenta, 9);
+        if (targetReached) Float(rect.X + rect.Width / 2, rect.Y + rect.Height + 2, "TARGET CLEAR", _magenta, 10);
     }
 
     // ---------- 分层动效 ----------
@@ -221,7 +224,8 @@ public sealed class EffectService
 
         var group = new TransformGroup();
         var scale = new ScaleTransform(0.25, 1);
-        var rotate = new RotateTransform(-16);
+        _slashFlip = !_slashFlip;
+        var rotate = new RotateTransform(_slashFlip ? 15 : -15);
         var translate = new TranslateTransform();
         group.Children.Add(scale);
         group.Children.Add(rotate);
@@ -233,7 +237,11 @@ public sealed class EffectService
         var grow = KeyFrames(duration, (0, 0.25), (85, 0.9), (145, 1.15));
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
 
-        var sweep = new DoubleAnimation(-width * 0.6, width * 0.5, duration);
+        // 交替方向：左上→右下 / 右上→左下
+        var sweep = new DoubleAnimation(
+            _slashFlip ? width * 0.5 : -width * 0.6,
+            _slashFlip ? -width * 0.5 : width * 0.5,
+            duration);
         sweep.Completed += (_, _) => _layer.Children.Remove(bar);
         translate.BeginAnimation(TranslateTransform.XProperty, sweep);
 
@@ -342,7 +350,7 @@ public sealed class EffectService
             _comboText = new TextBlock
             {
                 FontFamily = PixelFont,
-                FontSize = 9,
+                FontSize = 12,
                 FontWeight = FontWeights.Bold,
                 Foreground = _magenta,
             };
@@ -351,7 +359,7 @@ public sealed class EffectService
                 Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x0A, 0x09, 0x18)),
                 BorderBrush = _magenta,
                 BorderThickness = new Thickness(2),
-                Padding = new Thickness(5, 2, 5, 2),
+                Padding = new Thickness(7, 3, 7, 3),
                 Child = _comboText,
                 RenderTransformOrigin = new Point(0.5, 0.5),
                 IsHitTestVisible = false,
@@ -364,8 +372,13 @@ public sealed class EffectService
         Canvas.SetLeft(_comboBadge, Math.Max(4, _layer.ActualWidth - _comboBadge.DesiredSize.Width - 8));
         Canvas.SetTop(_comboBadge, 34);
 
+        // 徽章每次交替倾斜 ±15°
+        _comboFlip = !_comboFlip;
+        var group = new TransformGroup();
         var scale = new ScaleTransform(1.4, 1.4);
-        _comboBadge.RenderTransform = scale;
+        group.Children.Add(scale);
+        group.Children.Add(new RotateTransform(_comboFlip ? 15 : -15));
+        _comboBadge.RenderTransform = group;
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1, Ms(160)));
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1, Ms(160)));
 
