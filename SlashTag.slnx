@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SlashTag.Core/SlashTag.Core.csproj" />
+    <Project Path="src/SlashTag.Mcp/SlashTag.Mcp.csproj" />
+    <Project Path="src/SlashTag/SlashTag.csproj" />
+  </Folder>
+</Solution>

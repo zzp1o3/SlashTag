@@ -9,12 +9,12 @@
 
 ## 决策
 
-- 新增 `CircleLight.Mcp` 控制台进程，使用官方 `ModelContextProtocol` C# SDK（2.3.1），stdio 传输。
-- 抽出 `CircleLight.Core`（`TaskStore`、模型、时间解析、数据路径），GUI 与 MCP 共用同一套数据逻辑。
+- 新增 `SlashTag.Mcp` 控制台进程，使用官方 `ModelContextProtocol` C# SDK（2.3.1），stdio 传输。
+- 抽出 `SlashTag.Core`（`TaskStore`、模型、时间解析、数据路径），GUI 与 MCP 共用同一套数据逻辑。
 - 两个进程各自持有 SQLite 连接，设置 `PRAGMA busy_timeout = 5000`。
 - GUI 每 1.2 秒读取一次 `PRAGMA data_version`；发现外部提交就重载列表与统计。
 - MCP 工具的内部错误（校验失败、任务不存在、数据库异常）统一返回 `{ "ok": false, "error": "..." }`，避免 SDK 把异常折叠成 “An error occurred invoking…” 而丢失原因。
-- 工作区 `.zcode/config.json` 注册服务器 `circlelight`，会话启动时自动连接。
+- 工作区 `.zcode/config.json` 注册服务器 `slashtag`，会话启动时自动连接。
 
 ## 备选方案
 

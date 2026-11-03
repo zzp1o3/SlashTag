@@ -10,7 +10,7 @@
 ## 决策
 
 - **.NET 10 + WPF**：Windows 原生，托盘、通知、自启、无边框窗口都有成熟做法；`dotnet` CLI 可直接构建，无需 Visual Studio。
-- **Microsoft.Data.Sqlite**：数据存为单个 SQLite 文件，位于 `%LOCALAPPDATA%\CircleLight\circlelight.db`，与 exe 分离，备份即复制一个文件。
+- **Microsoft.Data.Sqlite**：数据存为单个 SQLite 文件，位于 `%LOCALAPPDATA%\SlashTag\slashtag.db`，与 exe 分离，备份即复制一个文件。
 - **CommunityToolkit.WinUI.Notifications**：在非打包 WPF 应用里发送 Windows 原生 toast。
 - **不引入 MVVM 框架**：一个窗口、两三个对话框，手写 `INotifyPropertyChanged` 足够。
 

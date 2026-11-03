@@ -1,4 +1,4 @@
-# CircleLight
+# SlashTag
 
 Windows 桌面待办便签。任务是唯一的核心对象，提醒围绕任务的两个可选时间展开。
 

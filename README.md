@@ -1,4 +1,4 @@
-# CircleLight
+# SlashTag
 
 Windows 桌面像素风待办便签：置顶、可缩放、托盘常驻，所有任务存在一个 SQLite 文件里。
 
@@ -25,13 +25,13 @@ Windows 桌面像素风待办便签：置顶、可缩放、托盘常驻，所有
 
 ```powershell
 cd <仓库根目录>
-dotnet run --project src/CircleLight
+dotnet run --project src/SlashTag
 ```
 
 便携版（自包含单文件，不需要安装 .NET）：
 
 ```powershell
-.\dist\CircleLight.exe
+.\dist\SlashTag.exe
 ```
 
 重新发布：
@@ -40,13 +40,13 @@ dotnet run --project src/CircleLight
 powershell -ExecutionPolicy Bypass -File publish.ps1
 ```
 
-发布结果在 `dist/`：`CircleLight.exe`（自包含，约 80 MB）和 `CircleLight.Mcp.exe`（框架依赖，需要 .NET 10 运行时）。
+发布结果在 `dist/`：`SlashTag.exe`（自包含，约 80 MB）和 `SlashTag.Mcp.exe`（框架依赖，需要 .NET 10 运行时）。
 
 ## 数据
 
-- 数据库：`%LOCALAPPDATA%\CircleLight\circlelight.db`（单个 SQLite 文件，备份就是复制它）。
-- 日志：`%LOCALAPPDATA%\CircleLight\error.log`。
-- 开机启动项写在 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，值名 `CircleLight`，可在设置里开关。
+- 数据库：`%LOCALAPPDATA%\SlashTag\slashtag.db`（单个 SQLite 文件，备份就是复制它）。
+- 日志：`%LOCALAPPDATA%\SlashTag\error.log`。
+- 开机启动项写在 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`，值名 `SlashTag`，可在设置里开关。
 
 ## 交互速查
 
@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1
 
 ## MCP 接口（给 agent 用）
 
-`CircleLight.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `circlelight.db`。工作区配置在 `.zcode/config.json`，指向 `dist/CircleLight.Mcp.exe`；ZCode 在会话启动时自动连接，改完配置后新开一个会话即可看到 `circlelight` 服务器的工具。重新发布用 `publish.ps1`。
+`SlashTag.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `slashtag.db`。本地工作区配置在 `.zcode/config.json`（不入库），指向 `dist/SlashTag.Mcp.exe`；ZCode 在会话启动时自动连接，改完配置后新开一个会话即可看到 `slashtag` 服务器的工具。重新发布用 `publish.ps1`。
 
 | 工具 | 作用 |
 | --- | --- |
@@ -96,12 +96,12 @@ powershell -ExecutionPolicy Bypass -File publish.ps1
 ## 代码结构
 
 ```
-src/CircleLight.Core/
+src/SlashTag.Core/
   Data/TaskStore.cs             SQLite 表结构、任务与完成记录
   Util/UserTime.cs              用户时间输入解析
   Util/TimeText.cs              时间与时长展示
   Storage/AppPaths.cs           数据库路径
-src/CircleLight/
+src/SlashTag/
   Services/ReminderService.cs   15 秒轮询、启动补发、跨天刷新
   Services/NotificationService.cs 原生 toast，失败退回应用内提示
   Services/TrayService.cs       托盘图标与菜单（图标运行时绘制）
@@ -110,7 +110,7 @@ src/CircleLight/
   Views/                        任务编辑、历史、设置、兜底提示
   Styles/Pixel.xaml             颜色、按钮、复选框、滚动条、对话框外壳
   MainWindow.xaml               便签主界面（含 data_version 自动刷新）
-src/CircleLight.Mcp/
+src/SlashTag.Mcp/
   Program.cs                    stdio MCP 服务入口
   TodoTools.cs                  11 个待办工具
 publish.ps1                     发布到 dist/ 的单文件 exe

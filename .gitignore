@@ -2,6 +2,7 @@ bin/
 obj/
 .vs/
 dist/
+.zcode/
 *.user
 *.suo
 *.log
