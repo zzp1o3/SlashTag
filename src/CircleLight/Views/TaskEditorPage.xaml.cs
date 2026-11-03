@@ -1,28 +1,33 @@
 using System.Windows;
-using CircleLight.Controls;
+using System.Windows.Controls;
+using UserControl = System.Windows.Controls.UserControl;
+using System.Windows.Threading;
 using CircleLight.Data;
 using CircleLight.Models;
 using CircleLight.Util;
 
 namespace CircleLight.Views;
 
-public partial class TaskEditorWindow : PixelWindow
+public partial class TaskEditorPage : UserControl
 {
-    private readonly TaskStore _store;
-    private readonly TaskRecord? _task;
+    private TaskStore? _store;
+    private TaskRecord? _task;
 
-    /// <summary>本次编辑是否新建了任务（用于播放新增动效）。</summary>
-    public bool Created { get; private set; }
+    public event Action<bool>? Saved;
+    public event Action? Cancelled;
 
-    public TaskEditorWindow(TaskStore store, TaskRecord? task = null, string? initialTitle = null)
+    public bool IsEditing => _task is not null;
+
+    public TaskEditorPage() => InitializeComponent();
+
+    public void Initialize(TaskStore store, TaskRecord? task, string? initialTitle)
     {
-        InitializeComponent();
         _store = store;
         _task = task;
+        ErrorText.Visibility = Visibility.Collapsed;
 
         if (task is not null)
         {
-            Title = "EDIT QUEST";
             TitleBox.Text = task.Title;
             StartBox.Text = task.StartAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
             DueBox.Text = task.DueAt?.ToString("yyyy-MM-dd HH:mm") ?? "";
@@ -31,19 +36,24 @@ public partial class TaskEditorWindow : PixelWindow
         }
         else
         {
-            Title = "NEW QUEST";
             TitleBox.Text = initialTitle ?? "";
+            StartBox.Text = "";
+            DueBox.Text = "";
+            LongTermBox.IsChecked = false;
+            CountBox.Text = "1";
         }
 
-        Loaded += (_, _) =>
+        Dispatcher.BeginInvoke(new Action(() =>
         {
             TitleBox.Focus();
             TitleBox.SelectAll();
-        };
+        }), DispatcherPriority.Input);
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
+        if (_store is null) return;
+
         var title = TitleBox.Text.Trim();
         if (title.Length == 0)
         {
@@ -75,23 +85,20 @@ public partial class TaskEditorWindow : PixelWindow
             return;
         }
 
-        if (_task is null)
+        var created = _task is null;
+        if (created)
         {
             _store.AddTask(title, start, due, LongTermBox.IsChecked == true, DateTime.Now, targetCount);
-            Created = true;
         }
         else
         {
-            _store.UpdateTask(_task.Id, title, start, due, LongTermBox.IsChecked == true, targetCount);
+            _store.UpdateTask(_task!.Id, title, start, due, LongTermBox.IsChecked == true, targetCount);
         }
 
-        DialogResult = true;
+        Saved?.Invoke(created);
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
-    {
-        DialogResult = false;
-    }
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Cancelled?.Invoke();
 
     private void ShowError(string message)
     {

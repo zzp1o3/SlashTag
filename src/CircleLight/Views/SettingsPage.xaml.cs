@@ -2,21 +2,24 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
-using CircleLight.Controls;
+using System.Windows.Controls;
+using UserControl = System.Windows.Controls.UserControl;
 using CircleLight.Services;
 
 namespace CircleLight.Views;
 
-public partial class SettingsWindow : PixelWindow
+public partial class SettingsPage : UserControl
 {
-    private readonly string _dataPath;
+    private string _dataPath = "";
 
-    public SettingsWindow(string dataPath)
+    public SettingsPage() => InitializeComponent();
+
+    public void Initialize(string dataPath)
     {
-        InitializeComponent();
         _dataPath = dataPath;
         DataPathText.Text = dataPath;
         AutostartBox.IsChecked = StartupService.IsEnabled();
+        ErrorText.Visibility = Visibility.Collapsed;
 
         var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.1.0";
         VersionText.Text = $"CircleLight {version}";
@@ -50,6 +53,4 @@ public partial class SettingsWindow : PixelWindow
             ErrorText.Visibility = Visibility.Visible;
         }
     }
-
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

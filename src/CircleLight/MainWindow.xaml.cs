@@ -28,6 +28,9 @@ public partial class MainWindow : Window
     private int _lastLevel = 1;
     private bool _loaded;
     private bool _exiting;
+    private bool _editorFromQuickAdd;
+
+    private enum PageKind { History, Settings, Editor }
 
     public MainWindow(TaskStore store)
     {
@@ -36,6 +39,23 @@ public partial class MainWindow : Window
         _vm = new MainViewModel(store);
         DataContext = _vm;
         _effects = new EffectService(EffectLayer, Shell);
+
+        EditorPage.Saved += created =>
+        {
+            if (created && _editorFromQuickAdd)
+            {
+                QuickAddBox.Clear();
+                HideQuickAdd();
+            }
+            _editorFromQuickAdd = false;
+            ShowMain();
+            if (created) PlayAddForNewest();
+        };
+        EditorPage.Cancelled += () =>
+        {
+            _editorFromQuickAdd = false;
+            ShowMain();
+        };
 
         _store.ResetDailyCounts(DateTime.Now);
 
@@ -84,8 +104,9 @@ public partial class MainWindow : Window
 
     public void OpenSettings()
     {
-        var dialog = new SettingsWindow(_store.DatabasePath) { Owner = this };
-        dialog.ShowDialog();
+        ShowNote();
+        SettingsPage.Initialize(_store.DatabasePath);
+        ShowPage(PageKind.Settings);
     }
 
     public void ExitApp()
@@ -282,8 +303,10 @@ public partial class MainWindow : Window
         var task = _store.GetTask(taskId);
         if (task is null) return;
 
-        var dialog = new TaskEditorWindow(_store, task) { Owner = this };
-        if (dialog.ShowDialog() == true) ReloadLists();
+        ShowNote();
+        _editorFromQuickAdd = false;
+        EditorPage.Initialize(_store, task, null);
+        ShowPage(PageKind.Editor);
     }
 
     private void AddButton_Click(object sender, RoutedEventArgs e) => ShowQuickAdd();
@@ -336,15 +359,10 @@ public partial class MainWindow : Window
 
     private void QuickAddDetail_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new TaskEditorWindow(_store, initialTitle: QuickAddBox.Text.Trim()) { Owner = this };
-        if (dialog.ShowDialog() == true)
-        {
-            var created = dialog.Created;
-            QuickAddBox.Clear();
-            HideQuickAdd();
-            ReloadLists(scrollToTop: true);
-            if (created) PlayAddForNewest();
-        }
+        ShowNote();
+        _editorFromQuickAdd = true;
+        EditorPage.Initialize(_store, null, QuickAddBox.Text.Trim());
+        ShowPage(PageKind.Editor);
     }
 
     /// <summary>新增的任务排在最前（id 倒序），刷新后对它播放入场动效。</summary>
@@ -363,11 +381,51 @@ public partial class MainWindow : Window
 
     private void History_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new HistoryWindow(_store) { Owner = this };
-        dialog.ShowDialog();
+        ShowNote();
+        HistoryPage.Load(_store);
+        ShowPage(PageKind.History);
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    private void Back_Click(object sender, RoutedEventArgs e) => ShowMain();
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && PageHost.Visibility == Visibility.Visible)
+        {
+            ShowMain();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>便签内切换页面，保持同一个窗口。</summary>
+    private void ShowPage(PageKind page)
+    {
+        HistoryPage.Visibility = page == PageKind.History ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPage.Visibility = page == PageKind.Settings ? Visibility.Visible : Visibility.Collapsed;
+        EditorPage.Visibility = page == PageKind.Editor ? Visibility.Visible : Visibility.Collapsed;
+        PageHost.Visibility = Visibility.Visible;
+        BackButton.Visibility = Visibility.Visible;
+        HeaderAddButton.Visibility = Visibility.Collapsed;
+        HeaderSettingsButton.Visibility = Visibility.Collapsed;
+        TitleText.Text = page switch
+        {
+            PageKind.History => "HISTORY",
+            PageKind.Settings => "SETTINGS",
+            _ => EditorPage.IsEditing ? "EDIT QUEST" : "NEW QUEST",
+        };
+    }
+
+    private void ShowMain()
+    {
+        PageHost.Visibility = Visibility.Collapsed;
+        BackButton.Visibility = Visibility.Collapsed;
+        HeaderAddButton.Visibility = Visibility.Visible;
+        HeaderSettingsButton.Visibility = Visibility.Visible;
+        TitleText.Text = "QUEST LOG";
+        ReloadLists();
+    }
 
     private void Hide_Click(object sender, RoutedEventArgs e)
     {

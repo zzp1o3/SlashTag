@@ -1,10 +1,9 @@
-<controls:PixelWindow x:Class="CircleLight.Views.HistoryWindow"
-                     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                     xmlns:controls="clr-namespace:CircleLight.Controls"
-                     Title="QUEST HISTORY" Width="420" Height="580">
+<UserControl x:Class="CircleLight.Views.HistoryPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="Microsoft YaHei UI">
 
-  <Grid>
+  <Grid Margin="12,10,12,10">
     <Grid.RowDefinitions>
       <RowDefinition Height="*" />
       <RowDefinition Height="Auto" />
@@ -88,4 +87,4 @@
                  Foreground="{StaticResource YellowBrush}" />
     </Border>
   </Grid>
-</controls:PixelWindow>
+</UserControl>
