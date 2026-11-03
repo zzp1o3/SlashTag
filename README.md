@@ -1,9 +1,12 @@
-
-
-
 # SlashTag
 
 Windows 桌面像素风待办便签：置顶、可缩放、托盘常驻，所有任务存在一个 SQLite 文件里。
+<img width="369" height="492" alt="image" src="https://github.com/user-attachments/assets/39fffd60-ce1d-4f00-afc3-944a83c24695" />
+<img width="369" height="487" alt="image" src="https://github.com/user-attachments/assets/cf8a34c9-3c5f-4d3f-b5b5-b0e3dcad6f9e" />
+<img width="372" height="486" alt="image" src="https://github.com/user-attachments/assets/b03880ce-170d-48a2-a4d3-3e69d4447d11" />
+<img width="371" height="487" alt="image" src="https://github.com/user-attachments/assets/a3419e16-0842-4f43-8765-c45e4697bad7" />
+
+
 
 https://github.com/user-attachments/assets/3098c0e8-2fbe-4cbd-9e52-f4c209686c67
 
