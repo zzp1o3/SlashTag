@@ -21,7 +21,9 @@ Windows 桌面像素风待办便签：置顶、可缩放、托盘常驻，所有
 
 ## 运行
 
-需要 Windows 与 .NET 10 SDK。
+预编译版：从 [Releases](https://github.com/zzp1o3/SlashTag/releases) 下载 `SlashTag.exe`，双击即可运行（自包含，不需要安装 .NET）。
+
+从源码运行需要 Windows 与 .NET 10 SDK。
 
 ```powershell
 cd <仓库根目录>
