@@ -78,7 +78,59 @@ powershell -ExecutionPolicy Bypass -File publish.ps1
 
 ## MCP interface for agents
 
-`SlashTag.Mcp` is a stdio MCP server sharing the same `slashtag.db`. Point your workspace MCP config at `dist/SlashTag.Mcp.exe` (run `publish.ps1` first). While the note is open, agent writes show up in about 1.2 s; with the note closed, changes are visible next time it opens.
+`SlashTag.Mcp` is a stdio MCP server sharing the same `slashtag.db` as the note.
+
+Build it first:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File publish.ps1
+# -> dist\SlashTag.Mcp.exe
+```
+
+The published server is framework-dependent and needs the .NET 10 runtime. To ship it without one, publish a self-contained copy:
+
+```powershell
+dotnet publish src/SlashTag.Mcp/SlashTag.Mcp.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+```
+
+### Generic MCP client (Claude Desktop, Cursor, …)
+
+```json
+{
+  "mcpServers": {
+    "slashtag": {
+      "command": "C:\\path\\to\\dist\\SlashTag.Mcp.exe",
+      "args": []
+    }
+  }
+}
+```
+
+### ZCode workspace
+
+`.zcode/config.json` in the repo root:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "slashtag": {
+        "type": "stdio",
+        "command": "C:\\path\\to\\dist\\SlashTag.Mcp.exe",
+        "args": [],
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+Register the server, trust/enable it if your client asks, then start a new session. Tool names look like `mcp__slashtag__list_tasks`.
+
+Verify it works by asking the agent to "list my todos"; it should call `list_tasks`. Use absolute paths — JSON needs `\\` on Windows. The agent and the note should run as the same Windows user so they share `%LOCALAPPDATA%\SlashTag\slashtag.db`.
+
+While the note is open, agent writes show up in about 1.2 s; with the note closed, changes are visible next time it opens. Reminders stay with the note process.
 
 | Tool | What it does |
 | --- | --- |

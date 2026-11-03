@@ -105,7 +105,59 @@ powershell -ExecutionPolicy Bypass -File publish.ps1
 
 ## MCP 接口（给 agent 用）
 
-`SlashTag.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `slashtag.db`。本地工作区配置在 `.zcode/config.json`（不入库），指向 `dist/SlashTag.Mcp.exe`；改完配置后新开一个会话即可看到 `slashtag` 服务器的工具。重新发布用 `publish.ps1`。
+`SlashTag.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `slashtag.db`。
+
+先构建：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File publish.ps1
+# -> dist\SlashTag.Mcp.exe
+```
+
+发布出来的是框架依赖版本，需要安装 .NET 10 运行时。不想装运行时的话，发布自包含版本：
+
+```powershell
+dotnet publish src/SlashTag.Mcp/SlashTag.Mcp.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+```
+
+### 通用 MCP 客户端（Claude Desktop、Cursor 等）
+
+```json
+{
+  "mcpServers": {
+    "slashtag": {
+      "command": "C:\\path\\to\\dist\\SlashTag.Mcp.exe",
+      "args": []
+    }
+  }
+}
+```
+
+### ZCode 工作区
+
+仓库根目录的 `.zcode/config.json`：
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "slashtag": {
+        "type": "stdio",
+        "command": "C:\\path\\to\\dist\\SlashTag.Mcp.exe",
+        "args": [],
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+注册后按客户端提示信任/启用该服务，再新开一个会话。工具名形如 `mcp__slashtag__list_tasks`。
+
+验证：让 agent「列出我的待办」，它应该调用 `list_tasks`。Windows 下用绝对路径，JSON 里反斜杠要写成 `\\`。agent 和便签需要用同一个 Windows 用户运行，才能共用 `%LOCALAPPDATA%\SlashTag\slashtag.db`。
+
+便签开着时，MCP 的修改约 1.2 秒内刷新到界面；便签关着时也可以操作，下次打开可见。提醒仍由便签进程负责。
 
 | 工具 | 作用 |
 | --- | --- |
