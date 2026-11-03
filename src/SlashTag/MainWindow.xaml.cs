@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using SlashTag.Data;
 using SlashTag.Services;
+using SlashTag.Util;
 using SlashTag.ViewModels;
 using SlashTag.Views;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -18,6 +19,9 @@ namespace SlashTag;
 public partial class MainWindow : Window
 {
     private const string BoundsKey = "window.bounds";
+    private const string ScaleKey = "ui.scale";
+    private const double MinScale = 0.8;
+    private const double MaxScale = 1.6;
 
     private readonly TaskStore _store;
     private readonly MainViewModel _vm;
@@ -29,6 +33,8 @@ public partial class MainWindow : Window
     private bool _loaded;
     private bool _exiting;
     private bool _editorFromQuickAdd;
+    private double _uiScale = 1.0;
+    private PageKind? _page;
 
     private enum PageKind { History, Settings, Editor }
 
@@ -39,6 +45,14 @@ public partial class MainWindow : Window
         _vm = new MainViewModel(store);
         DataContext = _vm;
         _effects = new EffectService(EffectLayer, Shell);
+
+        _uiScale = ReadScale(store);
+        ApplyScale();
+
+        Loc.Instance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "Item[]") RefreshLanguage();
+        };
 
         EditorPage.Saved += created =>
         {
@@ -70,6 +84,7 @@ public partial class MainWindow : Window
 
         _vm.Reload(DateTime.Now);
         _lastLevel = _vm.Level;
+        TitleText.Text = Loc.Instance["QuestLog"];
 
         _lastDataVersion = _store.GetDataVersion();
         _dataWatcher = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
@@ -105,7 +120,7 @@ public partial class MainWindow : Window
     public void OpenSettings()
     {
         ShowNote();
-        SettingsPage.Initialize(_store.DatabasePath);
+        SettingsPage.Initialize(_store);
         ShowPage(PageKind.Settings);
     }
 
@@ -180,8 +195,8 @@ public partial class MainWindow : Window
 
     private void RestoreWindowBounds()
     {
-        Width = 340;
-        Height = 560;
+        Width = Math.Round(340 * _uiScale);
+        Height = Math.Round(560 * _uiScale);
 
         var raw = _store.GetSetting(BoundsKey);
         if (!string.IsNullOrWhiteSpace(raw))
@@ -409,12 +424,8 @@ public partial class MainWindow : Window
         BackButton.Visibility = Visibility.Visible;
         HeaderAddButton.Visibility = Visibility.Collapsed;
         HeaderSettingsButton.Visibility = Visibility.Collapsed;
-        TitleText.Text = page switch
-        {
-            PageKind.History => "HISTORY",
-            PageKind.Settings => "SETTINGS",
-            _ => EditorPage.IsEditing ? "EDIT QUEST" : "NEW QUEST",
-        };
+        _page = page;
+        TitleText.Text = CurrentPageTitle();
     }
 
     private void ShowMain()
@@ -423,8 +434,64 @@ public partial class MainWindow : Window
         BackButton.Visibility = Visibility.Collapsed;
         HeaderAddButton.Visibility = Visibility.Visible;
         HeaderSettingsButton.Visibility = Visibility.Visible;
-        TitleText.Text = "QUEST LOG";
+        _page = null;
+        TitleText.Text = Loc.Instance["QuestLog"];
         ReloadLists();
+    }
+
+    private string CurrentPageTitle() => _page switch
+    {
+        PageKind.History => Loc.Instance["HistoryTitle"],
+        PageKind.Settings => Loc.Instance["SettingsTitle"],
+        PageKind.Editor => EditorPage.IsEditing ? Loc.Instance["EditQuestTitle"] : Loc.Instance["NewQuestTitle"],
+        _ => Loc.Instance["QuestLog"],
+    };
+
+    private void RefreshLanguage()
+    {
+        TitleText.Text = CurrentPageTitle();
+        _vm.Reload(DateTime.Now);
+        if (HistoryPage.Visibility == Visibility.Visible) HistoryPage.Load(_store);
+        EditorPage.ClearError();
+    }
+
+    // ---------- Ctrl + 滚轮缩放 ----------
+
+    private void Window_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
+        SetScale(_uiScale + (e.Delta > 0 ? 0.1 : -0.1));
+        e.Handled = true;
+    }
+
+    private void SetScale(double value)
+    {
+        var next = Math.Clamp(Math.Round(value, 1), MinScale, MaxScale);
+        if (Math.Abs(next - _uiScale) < 0.001) return;
+
+        var baseWidth = Width / _uiScale;
+        var baseHeight = Height / _uiScale;
+        _uiScale = next;
+        ApplyScale();
+        Width = Math.Round(baseWidth * _uiScale);
+        Height = Math.Round(baseHeight * _uiScale);
+        _store.SetSetting(ScaleKey, _uiScale.ToString("0.0", CultureInfo.InvariantCulture));
+        SaveBounds();
+    }
+
+    private void ApplyScale()
+    {
+        RootShell.LayoutTransform = new ScaleTransform(_uiScale, _uiScale);
+        MinWidth = Math.Round(300 * _uiScale);
+        MinHeight = Math.Round(400 * _uiScale);
+    }
+
+    private static double ReadScale(TaskStore store)
+    {
+        var raw = store.GetSetting(ScaleKey);
+        return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? Math.Clamp(value, MinScale, MaxScale)
+            : 1.0;
     }
 
     private void Hide_Click(object sender, RoutedEventArgs e)

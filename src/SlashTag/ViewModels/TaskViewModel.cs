@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using SlashTag.Models;
 using Fmt = SlashTag.Util.TimeText;
+using I18n = SlashTag.Util.Loc;
 
 namespace SlashTag.ViewModels;
 
@@ -75,10 +76,11 @@ public sealed class TaskViewModel : INotifyPropertyChanged
         IsCompletedRow = true;
         TargetCount = 1;
         WasLate = completion.OverdueSeconds > 0;
-        var late = completion.OverdueSeconds > 0
-            ? $" · 超时 {Fmt.Duration(completion.OverdueSeconds)}"
-            : "";
-        TimeText = $"{completion.CompletedAt:HH:mm} 完成{late}";
+        TimeText = completion.OverdueSeconds > 0
+            ? string.Format(I18n.Instance["CompletedLate"],
+                completion.CompletedAt.ToString("HH:mm"),
+                Fmt.Duration(completion.OverdueSeconds))
+            : string.Format(I18n.Instance["CompletedAt"], completion.CompletedAt.ToString("HH:mm"));
     }
 
     public static TaskViewModel ForTask(TaskRecord task, DateTime now)
@@ -103,7 +105,7 @@ public sealed class TaskViewModel : INotifyPropertyChanged
         {
             var seconds = (long)Math.Round((now - DueAt.Value).TotalSeconds);
             IsOverdue = true;
-            OverdueText = "! 超时 " + Fmt.Duration(seconds);
+            OverdueText = string.Format(I18n.Instance["Overdue"], Fmt.Duration(seconds));
         }
         else
         {

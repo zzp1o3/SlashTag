@@ -205,10 +205,10 @@
     </Setter>
   </Style>
 
-  <!-- 像素滚动条 -->
+  <!-- 胶囊滚动条：5px，悬停变黄 -->
   <Style TargetType="ScrollBar">
-    <Setter Property="Background" Value="{StaticResource InputBrush}" />
-    <Setter Property="Width" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Width" Value="5" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ScrollBar">
@@ -216,10 +216,16 @@
             <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}"
                    IsDirectionReversed="True">
               <Track.Thumb>
-                <Thumb MinHeight="24">
+                <Thumb MinHeight="28">
                   <Thumb.Template>
                     <ControlTemplate TargetType="Thumb">
-                      <Border Background="{StaticResource CyanBrush}" Margin="1" />
+                      <Border x:Name="Bar" Background="{StaticResource CyanBrush}"
+                              CornerRadius="2.5" Margin="0,2" />
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter TargetName="Bar" Property="Background" Value="{StaticResource YellowBrush}" />
+                        </Trigger>
+                      </ControlTemplate.Triggers>
                     </ControlTemplate>
                   </Thumb.Template>
                 </Thumb>
@@ -229,6 +235,18 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
+    <Style.Triggers>
+      <Trigger Property="Orientation" Value="Vertical">
+        <Setter Property="MinWidth" Value="5" />
+        <Setter Property="MaxWidth" Value="5" />
+      </Trigger>
+      <Trigger Property="Orientation" Value="Horizontal">
+        <Setter Property="Width" Value="Auto" />
+        <Setter Property="Height" Value="5" />
+        <Setter Property="MinHeight" Value="5" />
+        <Setter Property="MaxHeight" Value="5" />
+      </Trigger>
+    </Style.Triggers>
   </Style>
 
   <!-- 对话框窗口外壳 -->

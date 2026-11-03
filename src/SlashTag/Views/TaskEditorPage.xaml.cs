@@ -57,31 +57,31 @@ public partial class TaskEditorPage : UserControl
         var title = TitleBox.Text.Trim();
         if (title.Length == 0)
         {
-            ShowError("任务标题不能为空。");
+            ShowError(Loc.Instance["TitleRequired"]);
             return;
         }
 
-        if (!TryParseTime(StartBox.Text, out var start, out var startError))
+        if (!TryParseTime(StartBox.Text, out var start, out _))
         {
-            ShowError("开始时间：" + startError);
+            ShowError(Loc.Instance["InvalidTime"]);
             return;
         }
 
-        if (!TryParseTime(DueBox.Text, out var due, out var dueError))
+        if (!TryParseTime(DueBox.Text, out var due, out _))
         {
-            ShowError("截止时间：" + dueError);
+            ShowError(Loc.Instance["InvalidTime"]);
             return;
         }
 
         if (start.HasValue && due.HasValue && start.Value >= due.Value)
         {
-            ShowError("开始时间必须早于截止时间。");
+            ShowError(Loc.Instance["StartBeforeDue"]);
             return;
         }
 
         if (!int.TryParse(CountBox.Text.Trim(), out var targetCount) || targetCount < 1 || targetCount > 99)
         {
-            ShowError("目标次数需要在 1-99 之间。");
+            ShowError(Loc.Instance["CountRange"]);
             return;
         }
 
@@ -99,6 +99,8 @@ public partial class TaskEditorPage : UserControl
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Cancelled?.Invoke();
+
+    public void ClearError() => ErrorText.Visibility = Visibility.Collapsed;
 
     private void ShowError(string message)
     {

@@ -47,6 +47,7 @@ https://github.com/user-attachments/assets/3098c0e8-2fbe-4cbd-9e52-f4c209686c67
 - **CLEARED** — today's finished normal tasks fold away; deleting a task keeps its completion record in `CLEARED` for the day.
 - **History** — grouped by day, with progress per check (`3/8`), overdue duration, lifetime count and level.
 - **Desktop integration** — always-on-top note, tray icon, autostart toggle, single instance, remembered window bounds, native Windows toasts.
+- **UI preferences** — switch Chinese/English in Settings; Ctrl+wheel zooms the note and fonts (0.8×–1.6×); a slim 5 px capsule scrollbar.
 
 ## Tech stack
 

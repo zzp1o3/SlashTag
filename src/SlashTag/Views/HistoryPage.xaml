@@ -1,6 +1,7 @@
 <UserControl x:Class="SlashTag.Views.HistoryPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:util="clr-namespace:SlashTag.Util;assembly=SlashTag.Core"
              FontFamily="Microsoft YaHei UI">
 
   <Grid Margin="12,10,12,10">
@@ -75,8 +76,8 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <TextBlock Text="NO RECORDS YET" Margin="0,24,0,0" FontFamily="Courier New"
-                   FontSize="10" Foreground="{StaticResource DimBrush}"
+        <TextBlock Text="{Binding [NoRecords], Source={x:Static util:Loc.Instance}}" Margin="0,24,0,0"
+                   FontFamily="Courier New" FontSize="10" Foreground="{StaticResource DimBrush}"
                    Visibility="{Binding HasDays, Converter={StaticResource InvBoolToVis}}" />
       </StackPanel>
     </ScrollViewer>

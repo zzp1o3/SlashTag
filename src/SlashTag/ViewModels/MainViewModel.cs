@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using SlashTag.Data;
+using SlashTag.Util;
 
 namespace SlashTag.ViewModels;
 
@@ -57,7 +58,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var level = _store.CountAllCompletions() / 20 + 1;
 
         Level = level;
-        DayText = $"DAY {now.DayOfYear:000} · {now:MM/dd} · LV.{level}";
+        DayText = string.Format(Loc.Instance["DayText"], now.DayOfYear, now.ToString("MM/dd"), level);
         XpText = $"{done}/{total}";
 
         XpCells.Clear();
@@ -66,7 +67,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         HasActiveTasks = ActiveTasks.Count > 0;
         HasCleared = ClearedTasks.Count > 0;
-        ClearedHeader = $"{(_clearedExpanded ? "▾" : "▸")} CLEARED {ClearedTasks.Count}";
+        UpdateClearedHeader();
         ShowClearedList = HasCleared && _clearedExpanded;
         RefreshAlert();
     }
@@ -80,15 +81,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public void ToggleCleared()
     {
         _clearedExpanded = !_clearedExpanded;
-        ClearedHeader = $"{(_clearedExpanded ? "▾" : "▸")} CLEARED {ClearedTasks.Count}";
+        UpdateClearedHeader();
         ShowClearedList = HasCleared && _clearedExpanded;
     }
+
+    private void UpdateClearedHeader() =>
+        ClearedHeader = (_clearedExpanded ? "▾ " : "▸ ") +
+                        string.Format(Loc.Instance["Cleared"], ClearedTasks.Count);
 
     private void RefreshAlert()
     {
         var count = ActiveTasks.Count(t => t.IsOverdue);
         IsAlert = count > 0;
-        AlertText = count > 0 ? $"! ALERT {count}" : "▶ READY";
+        AlertText = count > 0 ? string.Format(Loc.Instance["Alert"], count) : Loc.Instance["Ready"];
     }
 
     private void Set<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string name = "")

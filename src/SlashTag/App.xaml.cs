@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using SlashTag.Data;
 using SlashTag.Services;
 using SlashTag.Storage;
+using SlashTag.Util;
 using SlashTag.Views;
 using CommunityToolkit.WinUI.Notifications;
 
@@ -46,11 +47,16 @@ public partial class App : System.Windows.Application
         StartupService.MigrateLegacy();
 
         _store = new TaskStore(AppPaths.DatabasePath);
+        Loc.Instance.Set(Loc.Parse(_store.GetSetting("ui.language")));
 
         var window = new MainWindow(_store);
         MainWindow = window;
 
         _tray = new TrayService(window, window.OpenSettings);
+        Loc.Instance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "Item[]") _tray?.RefreshLanguage();
+        };
 
         var notifier = new NotificationService(ShowFallback, Log);
         _reminders = new ReminderService(_store, notifier);

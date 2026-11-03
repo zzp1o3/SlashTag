@@ -35,13 +35,13 @@ public sealed class HistoryViewModel
             .Select(g => new HistoryDayViewModel
             {
                 Header = $"{g.Key:yyyy-MM-dd} {TimeText.Weekday(g.Key)}",
-                Count = $"{g.Count()} DONE",
+                Count = string.Format(Loc.Instance["DayDone"], g.Count()),
                 Rows = g.Select(r => new HistoryRowViewModel
                 {
                     Title = r.Title,
                     Time = $"{r.CompletedAt:HH:mm}",
                     Overdue = r.OverdueSeconds > 0
-                        ? $"超时 {TimeText.Duration(r.OverdueSeconds)}"
+                        ? string.Format(Loc.Instance["Overdue"], TimeText.Duration(r.OverdueSeconds))
                         : "",
                     IsLate = r.OverdueSeconds > 0,
                     IsLongTerm = r.IsLongTerm,
@@ -51,6 +51,6 @@ public sealed class HistoryViewModel
             })
             .ToList();
 
-        TotalText = $"TOTAL {totalCompletions} · LV.{totalCompletions / 20 + 1}";
+        TotalText = string.Format(Loc.Instance["TotalLevel"], totalCompletions, totalCompletions / 20 + 1);
     }
 }
