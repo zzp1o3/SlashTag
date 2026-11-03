@@ -26,12 +26,19 @@ cd <仓库根目录>
 dotnet run --project src/CircleLight
 ```
 
-或构建后直接运行：
+便携版（自包含单文件，不需要安装 .NET）：
 
 ```powershell
-dotnet build -c Release
-.\src\CircleLight\bin\Release\net10.0-windows10.0.19041.0\CircleLight.exe
+.\dist\CircleLight.exe
 ```
+
+重新发布：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File publish.ps1
+```
+
+发布结果在 `dist/`：`CircleLight.exe`（自包含，约 80 MB）和 `CircleLight.Mcp.exe`（框架依赖，需要 .NET 10 运行时）。
 
 ## 数据
 
@@ -55,11 +62,7 @@ dotnet build -c Release
 
 ## MCP 接口（给 agent 用）
 
-`CircleLight.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `circlelight.db`。工作区配置在 `.zcode/config.json`，ZCode 在会话启动时自动连接；改完配置后新开一个会话即可看到 `circlelight` 服务器的工具。
-
-```powershell
-dotnet build -c Release
-```
+`CircleLight.Mcp` 是一个 stdio MCP 服务，与便签共用同一个 `circlelight.db`。工作区配置在 `.zcode/config.json`，指向 `dist/CircleLight.Mcp.exe`；ZCode 在会话启动时自动连接，改完配置后新开一个会话即可看到 `circlelight` 服务器的工具。重新发布用 `publish.ps1`。
 
 | 工具 | 作用 |
 | --- | --- |
@@ -108,6 +111,7 @@ src/CircleLight/
 src/CircleLight.Mcp/
   Program.cs                    stdio MCP 服务入口
   TodoTools.cs                  11 个待办工具
+publish.ps1                     发布到 dist/ 的单文件 exe
 ```
 
 ## 设计记录

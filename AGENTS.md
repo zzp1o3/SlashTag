@@ -11,6 +11,6 @@
 ## 开发
 
 - 共享数据层在 `src/CircleLight.Core`，GUI（`src/CircleLight`）与 MCP 服务（`src/CircleLight.Mcp`）都依赖它。
-- 构建：`dotnet build -c Release`。工作区 MCP 配置指向 `src/CircleLight.Mcp/bin/Release/net10.0/CircleLight.Mcp.exe`，仓库移动后要同步改 `.zcode/config.json`。
+- 构建：`dotnet build -c Release`。工作区 MCP 配置指向 `dist/CircleLight.Mcp.exe`，用 `publish.ps1` 重新发布；仓库移动后要同步改 `.zcode/config.json`。
 - 设计决策记录在 `docs/adr/`；领域术语在 `GLOSSARY.md`。
 - 修改时间/提醒逻辑时，同时验证 GUI 手动操作与 MCP 工具两条路径。
