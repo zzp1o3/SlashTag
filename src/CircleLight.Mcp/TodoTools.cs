@@ -158,7 +158,7 @@ public sealed class TodoTools
             {
                 ok = true,
                 completed_at = now.ToString("yyyy-MM-dd HH:mm:ss"),
-                overdue_seconds = overdueSeconds,
+                recorded_overdue_seconds = overdueSeconds,
                 task = TaskDto(updated, now),
             });
         });
