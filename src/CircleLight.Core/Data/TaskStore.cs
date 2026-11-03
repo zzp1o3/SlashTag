@@ -180,11 +180,16 @@ public sealed class TaskStore : IDisposable
         }
         else
         {
-            using var del = _conn.CreateCommand();
-            del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
-            del.Parameters.AddWithValue("$id", taskId);
-            del.Parameters.AddWithValue("$day", now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            del.ExecuteNonQuery();
+            // 长期待办取消勾选只是恢复「可以再做一次」，不回收当天的完成记录；
+            // 普通任务取消勾选仍然撤销当天那条记录。
+            if (!task.IsLongTerm)
+            {
+                using var del = _conn.CreateCommand();
+                del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
+                del.Parameters.AddWithValue("$id", taskId);
+                del.Parameters.AddWithValue("$day", now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                del.ExecuteNonQuery();
+            }
         }
 
         // 勾选后不再提醒；取消勾选后重新参与提醒。
@@ -253,7 +258,7 @@ public sealed class TaskStore : IDisposable
         return GetTask(taskId);
     }
 
-    /// <summary>次数任务 −1；若原本已达标，撤销勾选并删除当天的完成记录。</summary>
+    /// <summary>次数任务取消勾选：进度清零，但保留当天的完成记录（不回收经验）。</summary>
     public TaskRecord? DecrementCount(long taskId, DateTime now)
     {
         var task = GetTask(taskId);
@@ -261,16 +266,11 @@ public sealed class TaskStore : IDisposable
 
         var day = Day(now);
         var done = task.CountDate is { } date && Day(date) == day ? task.DoneCount : 0;
-        if (done == 0) return task;
+        var wasChecked = task.IsChecked;
+        if (!wasChecked && done == 0) return task;
 
-        if (task.IsChecked)
-        {
-            using var del = _conn.CreateCommand();
-            del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
-            del.Parameters.AddWithValue("$id", taskId);
-            del.Parameters.AddWithValue("$day", day);
-            del.ExecuteNonQuery();
-        }
+        // 已达标后取消勾选：直接清零重新开始；未达标时按减一处理。
+        var newDone = wasChecked ? 0 : Math.Max(0, done - 1);
 
         using (var cmd = _conn.CreateCommand())
         {
@@ -279,7 +279,7 @@ public sealed class TaskStore : IDisposable
                 SET done_count = $done, is_checked = 0, start_notified = 0, overdue_notified = 0
                 WHERE id = $id AND deleted_at IS NULL;
                 """;
-            cmd.Parameters.AddWithValue("$done", done - 1);
+            cmd.Parameters.AddWithValue("$done", newDone);
             cmd.Parameters.AddWithValue("$id", taskId);
             cmd.ExecuteNonQuery();
         }

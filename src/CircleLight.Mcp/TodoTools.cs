@@ -189,7 +189,7 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "uncomplete_task")]
-    [Description("撤销任务的勾选。次数任务每次调用 -1，达标后撤销会删除当天的完成记录。")]
+    [Description("撤销任务的勾选。普通任务会删除当天的完成记录；长期待办与次数任务只恢复状态、保留记录，次数任务达标后撤销会把进度清零，未达标时每次 -1。")]
     public string UncompleteTask([Description("任务 id")] long id)
     {
         return Guarded(() =>
