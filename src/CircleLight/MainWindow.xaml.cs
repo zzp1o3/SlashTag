@@ -253,7 +253,7 @@ public partial class MainWindow : Window
     {
         if (sender is CheckBox { DataContext: TaskViewModel task })
         {
-            _store.SetChecked(task.Id, false, DateTime.Now);
+            _store.UndoCompletion(task.Id, DateTime.Now);
             ReloadLists();
         }
     }

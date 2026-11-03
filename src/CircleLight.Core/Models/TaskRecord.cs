@@ -26,4 +26,9 @@ public sealed class CompletionRecord
     public DateTime CompletedAt { get; init; }
     public long OverdueSeconds { get; init; }
     public bool IsLongTerm { get; init; }
+    public int ProgressDone { get; init; }
+    public int ProgressTarget { get; init; }
+
+    public bool HasProgress => ProgressTarget > 1;
+    public string ProgressText => HasProgress ? $"{ProgressDone}/{ProgressTarget}" : "";
 }

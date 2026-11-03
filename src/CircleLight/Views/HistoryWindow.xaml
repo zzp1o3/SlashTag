@@ -42,6 +42,12 @@
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal"
                                     VerticalAlignment="Top" Margin="8,0,0,0">
+                          <Border BorderBrush="{StaticResource CyanBrush}" BorderThickness="1"
+                                  Padding="3,0" Margin="0,0,6,0"
+                                  Visibility="{Binding HasProgress, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding Progress}" FontFamily="Courier New" FontSize="7.5"
+                                       Foreground="{StaticResource CyanBrush}" />
+                          </Border>
                           <Border BorderBrush="{StaticResource YellowBrush}" BorderThickness="1"
                                   Padding="3,0" Margin="0,0,6,0"
                                   Visibility="{Binding IsLongTerm, Converter={StaticResource BoolToVis}}">

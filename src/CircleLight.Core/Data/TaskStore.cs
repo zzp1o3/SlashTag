@@ -64,6 +64,8 @@ public sealed class TaskStore : IDisposable
         EnsureColumn("tasks", "target_count", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn("tasks", "done_count", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("tasks", "count_date", "TEXT NULL");
+        EnsureColumn("completions", "progress_done", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("completions", "progress_target", "INTEGER NOT NULL DEFAULT 0");
     }
 
     /// <summary>旧库补列：SQLite 的 CREATE TABLE IF NOT EXISTS 不会改已有表。</summary>
@@ -208,8 +210,31 @@ public sealed class TaskStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// 跨天刷新：长期待办与次数任务取消勾选、次数清零、提醒标记复位。
+    /// <summary>从 CLEARED 撤销完成：删除当天记录；任务仍在则一并取消勾选（已删除的任务只删记录）。</summary>
+    public void UndoCompletion(long taskId, DateTime now)
+    {
+        var day = Day(now);
+        using (var del = _conn.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM completions WHERE task_id = $id AND date(completed_at) = $day;";
+            del.Parameters.AddWithValue("$id", taskId);
+            del.Parameters.AddWithValue("$day", day);
+            del.ExecuteNonQuery();
+        }
+
+        using (var cmd = _conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                UPDATE tasks
+                SET is_checked = 0, start_notified = 0, overdue_notified = 0
+                WHERE id = $id AND deleted_at IS NULL;
+                """;
+            cmd.Parameters.AddWithValue("$id", taskId);
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>跨天刷新：长期待办与次数任务取消勾选、次数清零、提醒标记复位。
     /// 用 count_date 做水位，同一天重复调用不会清掉当天刚完成的勾选；
     /// 应用启动、每次重载和每次 MCP 调用都会补做，跨天关掉再打开也能刷新。
     /// </summary>
@@ -255,12 +280,13 @@ public sealed class TaskStore : IDisposable
             cmd.ExecuteNonQuery();
         }
 
-        if (reached && !task.IsChecked)
+        // 每一次勾选都写一条完成记录，历史里能看到 1/3、2/3、3/3。
+        if (!task.IsChecked)
         {
             var overdue = task.DueAt.HasValue && now > task.DueAt.Value
                 ? (long)Math.Round((now - task.DueAt.Value).TotalSeconds)
                 : 0L;
-            InsertCompletion(taskId, now, overdue);
+            InsertCompletion(taskId, now, overdue, done, task.TargetCount);
         }
 
         return GetTask(taskId);
@@ -277,8 +303,22 @@ public sealed class TaskStore : IDisposable
         var wasChecked = task.IsChecked;
         if (!wasChecked && done == 0) return task;
 
-        // 已达标后取消勾选：直接清零重新开始；未达标时按减一处理。
+        // 已达标后取消勾选：直接清零重新开始；未达标时按减一处理，并撤销最后一条记录。
         var newDone = wasChecked ? 0 : Math.Max(0, done - 1);
+
+        if (!wasChecked)
+        {
+            using var del = _conn.CreateCommand();
+            del.CommandText = """
+                DELETE FROM completions
+                WHERE id = (SELECT id FROM completions
+                            WHERE task_id = $id AND date(completed_at) = $day
+                            ORDER BY id DESC LIMIT 1);
+                """;
+            del.Parameters.AddWithValue("$id", taskId);
+            del.Parameters.AddWithValue("$day", day);
+            del.ExecuteNonQuery();
+        }
 
         using (var cmd = _conn.CreateCommand())
         {
@@ -318,11 +358,11 @@ public sealed class TaskStore : IDisposable
         var list = new List<CompletionRecord>();
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
-            SELECT t.id, t.title, t.is_long_term, c.completed_at, c.overdue_seconds
+            SELECT t.id, t.title, t.is_long_term, c.completed_at, c.overdue_seconds,
+                   c.progress_done, c.progress_target
             FROM completions c
             JOIN tasks t ON t.id = c.task_id
-            WHERE t.deleted_at IS NULL
-              AND t.is_long_term = 0
+            WHERE t.is_long_term = 0
               AND t.target_count = 1
               AND date(c.completed_at) = $day
             ORDER BY c.completed_at DESC, c.id DESC;
@@ -338,6 +378,8 @@ public sealed class TaskStore : IDisposable
                 IsLongTerm = reader.GetInt32(2) != 0,
                 CompletedAt = FromDb(reader.GetString(3)) ?? now,
                 OverdueSeconds = reader.GetInt64(4),
+                ProgressDone = reader.GetInt32(5),
+                ProgressTarget = reader.GetInt32(6),
             });
         }
         return list;
@@ -348,7 +390,8 @@ public sealed class TaskStore : IDisposable
         var list = new List<CompletionRecord>();
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
-            SELECT t.id, t.title, t.is_long_term, c.completed_at, c.overdue_seconds
+            SELECT t.id, t.title, t.is_long_term, c.completed_at, c.overdue_seconds,
+                   c.progress_done, c.progress_target
             FROM completions c
             JOIN tasks t ON t.id = c.task_id
             ORDER BY c.completed_at DESC, c.id DESC;
@@ -363,6 +406,8 @@ public sealed class TaskStore : IDisposable
                 IsLongTerm = reader.GetInt32(2) != 0,
                 CompletedAt = FromDb(reader.GetString(3)) ?? DateTime.Now,
                 OverdueSeconds = reader.GetInt64(4),
+                ProgressDone = reader.GetInt32(5),
+                ProgressTarget = reader.GetInt32(6),
             });
         }
         return list;
@@ -451,16 +496,18 @@ public sealed class TaskStore : IDisposable
         return reader.Read() ? ReadTask(reader) : null;
     }
 
-    private void InsertCompletion(long taskId, DateTime completedAt, long overdueSeconds)
+    private void InsertCompletion(long taskId, DateTime completedAt, long overdueSeconds, int progressDone = 0, int progressTarget = 0)
     {
         using var cmd = _conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO completions (task_id, completed_at, overdue_seconds)
-            VALUES ($id, $completed, $overdue);
+            INSERT INTO completions (task_id, completed_at, overdue_seconds, progress_done, progress_target)
+            VALUES ($id, $completed, $overdue, $done, $target);
             """;
         cmd.Parameters.AddWithValue("$id", taskId);
         cmd.Parameters.AddWithValue("$completed", ToDb(completedAt));
         cmd.Parameters.AddWithValue("$overdue", overdueSeconds);
+        cmd.Parameters.AddWithValue("$done", progressDone);
+        cmd.Parameters.AddWithValue("$target", progressTarget);
         cmd.ExecuteNonQuery();
     }
 

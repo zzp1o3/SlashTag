@@ -238,7 +238,7 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "list_completed")]
-    [Description("列出某一天完成的任务，默认今天。包含完成时间、当时的超时时长与是否长期待办。")]
+    [Description("列出某一天完成的任务，默认今天。包含完成时间、当时的超时时长、是否长期待办与次数进度。")]
     public string ListCompleted([Description("日期 yyyy-MM-dd；默认今天")] string? date = null)
     {
         return Guarded(() =>
@@ -258,7 +258,7 @@ public sealed class TodoTools
     }
 
     [McpServerTool(Name = "get_history")]
-    [Description("按天返回最近 N 天的完成记录，包含每天完成的任务、完成时间与超时时长。")]
+    [Description("按天返回最近 N 天的完成记录，包含每天完成的任务、完成时间、超时时长与次数进度。")]
     public string GetHistory([Description("最近天数，1-365，默认 7")] int days = 7)
     {
         return Guarded(() =>
@@ -352,6 +352,9 @@ public sealed class TodoTools
         completed_at = completion.CompletedAt.ToString("yyyy-MM-dd HH:mm"),
         overdue_seconds = completion.OverdueSeconds,
         long_term = completion.IsLongTerm,
+        progress = completion.HasProgress ? completion.ProgressText : null,
+        progress_done = completion.ProgressDone,
+        progress_target = completion.ProgressTarget,
     };
 
     private static string ValidateTitle(string? title)

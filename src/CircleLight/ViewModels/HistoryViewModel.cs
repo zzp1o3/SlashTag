@@ -8,6 +8,8 @@ public sealed class HistoryRowViewModel
     public string Title { get; init; } = "";
     public string Time { get; init; } = "";
     public string Overdue { get; init; } = "";
+    public string Progress { get; init; } = "";
+    public bool HasProgress { get; init; }
     public bool IsLate { get; init; }
     public bool IsLongTerm { get; init; }
 }
@@ -43,6 +45,8 @@ public sealed class HistoryViewModel
                         : "",
                     IsLate = r.OverdueSeconds > 0,
                     IsLongTerm = r.IsLongTerm,
+                    Progress = r.ProgressText,
+                    HasProgress = r.HasProgress,
                 }).ToList(),
             })
             .ToList();
