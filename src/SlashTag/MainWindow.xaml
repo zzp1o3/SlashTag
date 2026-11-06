@@ -444,10 +444,6 @@
           </Grid>
         </Border>
       </Border>
-
-      <!-- 收起/展开动画层 -->
-      <Canvas x:Name="TransitionLayer" Panel.ZIndex="200"
-              IsHitTestVisible="False" ClipToBounds="True" />
     </Grid>
   </Border>
 </Window>

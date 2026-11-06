@@ -68,7 +68,7 @@ public partial class MainWindow : Window
         _pinned = store.GetSetting(PinKey) == "1";
         _indicator = new EdgeIndicatorWindow();
         _indicator.Hovered += () => ShowFromEdge(byHover: true);
-        _animator = new EdgeAnimator(NoteShell, TransitionLayer);
+        _animator = new EdgeAnimator(NoteShell);
 
         _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _collapseTimer.Tick += (_, _) =>

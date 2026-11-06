@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using SlashTag.Services.EdgeAnimations;
+using SlashTag.Views;
 
 namespace SlashTag.Services;
 
@@ -9,14 +10,12 @@ namespace SlashTag.Services;
 public sealed class EdgeAnimator
 {
     private readonly FrameworkElement _noteShell;
-    private readonly Canvas _layer;
     private readonly List<IEdgeAnimation> _animations;
     private readonly FadeEdgeAnimation _fallback = new();
 
-    public EdgeAnimator(FrameworkElement noteShell, Canvas layer)
+    public EdgeAnimator(FrameworkElement noteShell)
     {
         _noteShell = noteShell;
-        _layer = layer;
         _animations = new List<IEdgeAnimation>
         {
             new CollapseEdgeAnimation(),
@@ -48,61 +47,132 @@ public sealed class EdgeAnimator
 
     public async Task HideAsync(IEdgeAnimation animation, bool toRight)
     {
-        var snapshot = animation.NeedsSnapshot ? EdgeAnimationVisuals.Capture(_noteShell) : null;
-        if (animation.NeedsSnapshot && snapshot is null) animation = _fallback;
+        var window = Window.GetWindow(_noteShell);
+        if (!animation.NeedsSnapshot)
+        {
+            var context = new EdgeAnimationContext
+            {
+                NoteShell = _noteShell,
+                Layer = new Canvas(),
+                ToRight = toRight,
+            };
+            try
+            {
+                await animation.HideAsync(context);
+            }
+            finally
+            {
+                Finish(hidden: true);
+            }
+            return;
+        }
 
-        var context = new EdgeAnimationContext
+        var snapshot = EdgeAnimationVisuals.Capture(_noteShell);
+        if (snapshot is null)
+        {
+            await HideAsync(_fallback, toRight);
+            return;
+        }
+
+        var overlay = new AnimationOverlayWindow();
+        overlay.Prepare(_noteShell);
+        window?.Hide();
+
+        var capture = new EdgeAnimationContext
         {
             NoteShell = _noteShell,
-            Layer = _layer,
+            Layer = overlay.CanvasLayer,
             ToRight = toRight,
             Snapshot = snapshot,
         };
 
         try
         {
-            await animation.HideAsync(context);
+            await animation.HideAsync(capture);
         }
         finally
         {
+            overlay.Finish();
             Finish(hidden: true);
         }
     }
 
     public async Task ShowAsync(IEdgeAnimation animation, bool toRight)
     {
-        ImageSource? snapshot = null;
-        if (animation.NeedsSnapshot)
+        var window = Window.GetWindow(_noteShell);
+
+        if (!animation.NeedsSnapshot)
         {
-            _noteShell.Opacity = 1;
-            _noteShell.Visibility = Visibility.Visible;
-            snapshot = EdgeAnimationVisuals.Capture(_noteShell);
-            _noteShell.Visibility = Visibility.Hidden;
-            if (snapshot is null) animation = _fallback;
+            if (window is not null && !window.IsVisible)
+            {
+                window.Show();
+                window.UpdateLayout();
+            }
+
+            var context = new EdgeAnimationContext
+            {
+                NoteShell = _noteShell,
+                Layer = new Canvas(),
+                ToRight = toRight,
+            };
+            try
+            {
+                await animation.ShowAsync(context);
+            }
+            finally
+            {
+                Finish(hidden: false);
+            }
+            return;
         }
 
-        var context = new EdgeAnimationContext
+        if (window is not null && !window.IsVisible)
+        {
+            window.Show();
+            window.UpdateLayout();
+        }
+
+        _noteShell.BeginAnimation(UIElement.OpacityProperty, null);
+        _noteShell.Opacity = 1;
+        _noteShell.Visibility = Visibility.Visible;
+        var snapshot = EdgeAnimationVisuals.Capture(_noteShell);
+        if (snapshot is null)
+        {
+            await ShowAsync(_fallback, toRight);
+            return;
+        }
+
+        var overlay = new AnimationOverlayWindow();
+        overlay.Prepare(_noteShell);
+        _noteShell.Visibility = Visibility.Hidden;
+        window?.Hide();
+
+        var capture = new EdgeAnimationContext
         {
             NoteShell = _noteShell,
-            Layer = _layer,
+            Layer = overlay.CanvasLayer,
             ToRight = toRight,
             Snapshot = snapshot,
         };
 
         try
         {
-            await animation.ShowAsync(context);
+            await animation.ShowAsync(capture);
         }
         finally
         {
+            overlay.Finish();
+            if (window is not null && !window.IsVisible)
+            {
+                window.Show();
+                window.UpdateLayout();
+            }
             Finish(hidden: false);
         }
     }
 
     private void Finish(bool hidden)
     {
-        _layer.Children.Clear();
-        _layer.RenderTransform = Transform.Identity;
         _noteShell.BeginAnimation(UIElement.OpacityProperty, null);
         _noteShell.Opacity = 1;
         _noteShell.Visibility = hidden ? Visibility.Hidden : Visibility.Visible;
