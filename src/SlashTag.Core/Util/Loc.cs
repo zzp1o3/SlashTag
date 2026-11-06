@@ -107,6 +107,8 @@ public sealed class Loc : INotifyPropertyChanged
         ["CheckTooltip"] = "勾选完成",
         ["UndoTooltip"] = "撤销完成",
         ["DeleteTooltip"] = "删除",
+        ["PinOffTip"] = "固定展示（不自动贴边）",
+        ["PinOnTip"] = "取消固定（自动贴边）",
     };
 
     private static readonly Dictionary<string, string> English = new()
@@ -180,5 +182,7 @@ public sealed class Loc : INotifyPropertyChanged
         ["CheckTooltip"] = "Complete",
         ["UndoTooltip"] = "Undo",
         ["DeleteTooltip"] = "Delete",
+        ["PinOffTip"] = "Keep open (no auto-hide)",
+        ["PinOnTip"] = "Unpin (auto-hide)",
     };
 }

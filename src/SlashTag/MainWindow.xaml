@@ -12,6 +12,8 @@
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         PreviewKeyDown="Window_PreviewKeyDown"
         PreviewMouseWheel="Window_PreviewMouseWheel"
+        MouseEnter="Window_MouseEnter"
+        MouseLeave="Window_MouseLeave"
         Closing="Window_Closing" Loaded="Window_Loaded">
 
   <WindowChrome.WindowChrome>
@@ -21,6 +23,9 @@
   </WindowChrome.WindowChrome>
 
   <Window.Resources>
+
+    <PathGeometry x:Key="PinGeometry"
+                  Figures="M12 17v5 M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
 
     <Style x:Key="RowDeleteButton" TargetType="Button">
       <Setter Property="Width" Value="18" />
@@ -233,6 +238,20 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             VerticalAlignment="Center">
+                  <Button x:Name="PinButton" Style="{StaticResource PixelIconButton}"
+                          AutomationProperties.Name="Pin"
+                          ToolTip="{Binding [PinOffTip], Source={x:Static util:Loc.Instance}}"
+                          Click="Pin_Click">
+                    <Viewbox Width="13" Height="13">
+                      <Grid Width="24" Height="24">
+                        <Path x:Name="PinFill" Data="{StaticResource PinGeometry}"
+                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                        <Path Data="{StaticResource PinGeometry}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                              StrokeThickness="1.6" StrokeLineJoin="Round" />
+                      </Grid>
+                    </Viewbox>
+                  </Button>
                   <Button x:Name="HeaderAddButton" Style="{StaticResource PixelIconButton}" Content="+"
                           AutomationProperties.Name="New task"
                           ToolTip="{Binding [NewTaskTooltip], Source={x:Static util:Loc.Instance}}"
@@ -417,6 +436,16 @@
               <views:SettingsPage x:Name="SettingsPage" Visibility="Collapsed" />
               <views:TaskEditorPage x:Name="EditorPage" Visibility="Collapsed" />
             </Grid>
+
+            <!-- 贴边提示：黄色感叹号 -->
+            <Border x:Name="EdgeTab" Width="16" Height="44" Visibility="Collapsed"
+                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Background="{StaticResource YellowBrush}" BorderBrush="{StaticResource BgBrush}"
+                    BorderThickness="2" Panel.ZIndex="45" IsHitTestVisible="False">
+              <TextBlock Text="!" FontFamily="Courier New" FontSize="18" FontWeight="Bold"
+                         Foreground="{StaticResource BgBrush}" HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Border>
 
             <!-- 动效层：不参与布局与命中测试 -->
             <Canvas x:Name="EffectLayer" Grid.RowSpan="6" Panel.ZIndex="50"

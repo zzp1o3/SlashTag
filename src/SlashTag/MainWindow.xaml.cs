@@ -1,8 +1,11 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SlashTag.Data;
@@ -11,6 +14,7 @@ using SlashTag.Util;
 using SlashTag.ViewModels;
 using SlashTag.Views;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using ButtonBase = System.Windows.Controls.Primitives.ButtonBase;
 using CheckBox = System.Windows.Controls.CheckBox;
 
@@ -20,6 +24,8 @@ public partial class MainWindow : Window
 {
     private const string BoundsKey = "window.bounds";
     private const string ScaleKey = "ui.scale";
+    private const string PinKey = "window.pin";
+    private const string PosKey = "window.pos";
     private const double MinScale = 0.8;
     private const double MaxScale = 1.6;
 
@@ -28,6 +34,8 @@ public partial class MainWindow : Window
     private readonly EffectService _effects;
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _dataWatcher;
+    private readonly DispatcherTimer _collapseTimer;
+    private readonly DispatcherTimer _slideTimer;
     private long _lastDataVersion;
     private int _lastLevel = 1;
     private bool _loaded;
@@ -35,6 +43,19 @@ public partial class MainWindow : Window
     private bool _editorFromQuickAdd;
     private double _uiScale = 1.0;
     private PageKind? _page;
+    private bool _pinned;
+    private bool _collapsed;
+    private bool _animating;
+    private bool _hideRight;
+    private int _expandedPhysLeft;
+    private int _expandedPhysTop;
+    private int _slideFromX;
+    private int _slideToX;
+    private int _slideY;
+    private int _slideDuration;
+    private long _slideStart;
+    private bool _slideAccelerate;
+    private NativeMethods.RECT _activeWork;
 
     private enum PageKind { History, Settings, Editor }
 
@@ -48,6 +69,19 @@ public partial class MainWindow : Window
 
         _uiScale = ReadScale(store);
         ApplyScale();
+
+        _pinned = store.GetSetting(PinKey) == "1";
+        _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _collapseTimer.Tick += (_, _) =>
+        {
+            _collapseTimer.Stop();
+            if (_pinned || _collapsed || _animating || IsMouseOver) return;
+            Collapse();
+        };
+        UpdatePinVisual();
+
+        _slideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(15) };
+        _slideTimer.Tick += SlideTimer_Tick;
 
         Loc.Instance.PropertyChanged += (_, e) =>
         {
@@ -79,7 +113,16 @@ public partial class MainWindow : Window
             _saveTimer.Stop();
             SaveBounds();
         };
-        LocationChanged += (_, _) => ScheduleSave();
+        LocationChanged += (_, _) =>
+        {
+            if (!_animating && !_collapsed)
+            {
+                var rect = WindowRect();
+                _expandedPhysLeft = rect.Left;
+                _expandedPhysTop = rect.Top;
+            }
+            ScheduleSave();
+        };
         SizeChanged += (_, _) => ScheduleSave();
 
         _vm.Reload(DateTime.Now);
@@ -106,6 +149,7 @@ public partial class MainWindow : Window
 
     public void ShowNote()
     {
+        if (_collapsed) Expand();
         if (!IsVisible) Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
@@ -128,6 +172,7 @@ public partial class MainWindow : Window
     {
         _exiting = true;
         _dataWatcher.Stop();
+        _collapseTimer.Stop();
         SaveBounds();
         Close();
         System.Windows.Application.Current.Shutdown();
@@ -136,6 +181,7 @@ public partial class MainWindow : Window
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         RestoreWindowBounds();
+        ApplySavedPosition();
         _loaded = true;
     }
 
@@ -186,11 +232,17 @@ public partial class MainWindow : Window
     private void SaveBounds()
     {
         if (!_loaded) return;
+
+        var rect = _collapsed || _animating
+            ? new NativeMethods.RECT { Left = _expandedPhysLeft, Top = _expandedPhysTop }
+            : WindowRect();
+
         _store.SetSetting(BoundsKey,
             string.Join(';', Left.ToString("0.##", CultureInfo.InvariantCulture),
                 Top.ToString("0.##", CultureInfo.InvariantCulture),
                 Width.ToString("0.##", CultureInfo.InvariantCulture),
                 Height.ToString("0.##", CultureInfo.InvariantCulture)));
+        _store.SetSetting(PosKey, $"{rect.Left};{rect.Top}");
     }
 
     private void RestoreWindowBounds()
@@ -453,6 +505,7 @@ public partial class MainWindow : Window
         _vm.Reload(DateTime.Now);
         if (HistoryPage.Visibility == Visibility.Visible) HistoryPage.Load(_store);
         EditorPage.ClearError();
+        UpdatePinVisual();
     }
 
     // ---------- Ctrl + 滚轮缩放 ----------
@@ -496,7 +549,190 @@ public partial class MainWindow : Window
 
     private void Hide_Click(object sender, RoutedEventArgs e)
     {
+        _collapseTimer.Stop();
         SaveBounds();
         Hide();
+    }
+
+    // ---------- 图钉与贴边隐藏 ----------
+
+    private void Pin_Click(object sender, RoutedEventArgs e)
+    {
+        _pinned = !_pinned;
+        _store.SetSetting(PinKey, _pinned ? "1" : "0");
+        UpdatePinVisual();
+
+        if (_pinned)
+        {
+            _collapseTimer.Stop();
+            if (_collapsed) Expand();
+        }
+        else if (!IsMouseOver)
+        {
+            ScheduleCollapse();
+        }
+    }
+
+    private void UpdatePinVisual()
+    {
+        PinFill.Visibility = _pinned ? Visibility.Visible : Visibility.Collapsed;
+        PinButton.ToolTip = Loc.Instance[_pinned ? "PinOnTip" : "PinOffTip"];
+    }
+
+    private void Window_MouseEnter(object sender, MouseEventArgs e)
+    {
+        _collapseTimer.Stop();
+        if (_collapsed && !_animating) Expand();
+    }
+
+    private void Window_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_pinned || _collapsed || _animating) return;
+        ScheduleCollapse();
+    }
+
+    private void ScheduleCollapse()
+    {
+        _collapseTimer.Stop();
+        _collapseTimer.Start();
+    }
+
+    private double StripWidth => 16 * _uiScale + 6;
+
+
+    private void Collapse()
+    {
+        if (_pinned || _collapsed) return;
+
+        var info = MonitorInfo();
+        var work = info.rcWork;
+        var rect = WindowRect();
+        _expandedPhysLeft = rect.Left;
+        _expandedPhysTop = rect.Top;
+
+        var virtualScreen = System.Windows.Forms.SystemInformation.VirtualScreen;
+        var canHideRight = info.rcMonitor.Right >= virtualScreen.Right - 1;
+        var canHideLeft = info.rcMonitor.Left <= virtualScreen.Left + 1;
+        _hideRight = canHideRight != canHideLeft
+            ? canHideRight
+            : (rect.Left + rect.Right) / 2 >= (work.Left + work.Right) / 2;
+        _activeWork = work;
+
+        var dpi = WindowDpiScale();
+        var strip = (int)Math.Ceiling(StripWidth * dpi);
+        var width = rect.Right - rect.Left;
+        var target = _hideRight ? work.Right - strip : work.Left - width + strip;
+
+        EdgeTab.HorizontalAlignment = _hideRight ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right;
+        EdgeTab.Visibility = Visibility.Visible;
+        _collapsed = true;
+        SlideTo(target, rect.Top, 220, accelerate: true);
+    }
+
+    private void Expand()
+    {
+        if (!_collapsed) return;
+
+        var work = _activeWork;
+        if (work.Right <= work.Left) work = MonitorInfo().rcWork;
+        var rect = WindowRect();
+        var width = rect.Right - rect.Left;
+        var target = _hideRight ? work.Right - width : work.Left;
+
+        EdgeTab.Visibility = Visibility.Collapsed;
+        _collapsed = false;
+        SlideTo(target, rect.Top, 220, accelerate: false);
+    }
+
+    private void SlideTo(int targetX, int targetY, int durationMs, bool accelerate)
+    {
+        _animating = true;
+        _slideFromX = WindowRect().Left;
+        _slideToX = targetX;
+        _slideY = targetY;
+        _slideDuration = durationMs;
+        _slideAccelerate = accelerate;
+        _slideStart = Stopwatch.GetTimestamp();
+        _slideTimer.Stop();
+        _slideTimer.Start();
+    }
+
+    private void SlideTimer_Tick(object? sender, EventArgs e)
+    {
+        var elapsed = (Stopwatch.GetTimestamp() - _slideStart) * 1000.0 / Stopwatch.Frequency;
+        var t = Math.Min(1.0, elapsed / _slideDuration);
+        var eased = _slideAccelerate ? t * t * t : 1 - Math.Pow(1 - t, 3);
+        var x = (int)Math.Round(_slideFromX + (_slideToX - _slideFromX) * eased);
+
+        NativeMethods.SetWindowPos(Handle, IntPtr.Zero, x, _slideY, 0, 0,
+            NativeMethods.SwpNoSize | NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
+
+        if (t < 1.0) return;
+
+        _slideTimer.Stop();
+        _animating = false;
+
+        if (_collapsed)
+        {
+            if (!_pinned && IsMouseOver) Expand();
+        }
+        else
+        {
+            var rect = WindowRect();
+            _expandedPhysLeft = rect.Left;
+            _expandedPhysTop = rect.Top;
+            if (!_pinned && !IsMouseOver) ScheduleCollapse();
+        }
+
+        ScheduleSave();
+    }
+
+    private IntPtr Handle => new WindowInteropHelper(this).Handle;
+
+    private NativeMethods.RECT WindowRect()
+    {
+        NativeMethods.GetWindowRect(Handle, out var rect);
+        return rect;
+    }
+
+    private NativeMethods.MONITORINFO MonitorInfo()
+    {
+        var monitor = NativeMethods.MonitorFromWindow(Handle, NativeMethods.MonitorDefaultToNearest);
+        var info = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+        NativeMethods.GetMonitorInfo(monitor, ref info);
+        return info;
+    }
+
+    private double WindowDpiScale()
+    {
+        var dpi = NativeMethods.GetDpiForWindow(Handle);
+        return dpi <= 0 ? 1.0 : dpi / 96.0;
+    }
+
+    private void ApplySavedPosition()
+    {
+        var raw = _store.GetSetting(PosKey);
+        if (!string.IsNullOrWhiteSpace(raw))
+        {
+            var parts = raw.Split(';');
+            if (parts.Length == 2
+                && int.TryParse(parts[0], out var x)
+                && int.TryParse(parts[1], out var y)
+                && IsOnAnyMonitor(x, y))
+            {
+                NativeMethods.SetWindowPos(Handle, IntPtr.Zero, x, y, 0, 0,
+                    NativeMethods.SwpNoSize | NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
+            }
+        }
+
+        var rect = WindowRect();
+        _expandedPhysLeft = rect.Left;
+        _expandedPhysTop = rect.Top;
+    }
+
+    private static bool IsOnAnyMonitor(int x, int y)
+    {
+        var rect = new NativeMethods.RECT { Left = x, Top = y, Right = x + 1, Bottom = y + 1 };
+        return NativeMethods.MonitorFromRect(ref rect, NativeMethods.MonitorDefaultToNull) != IntPtr.Zero;
     }
 }
