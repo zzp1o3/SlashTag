@@ -35,7 +35,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _saveTimer;
     private readonly DispatcherTimer _dataWatcher;
     private readonly DispatcherTimer _collapseTimer;
-    private readonly DispatcherTimer _slideTimer;
+    private readonly DispatcherTimer _graceTimer;
+    private readonly EdgeIndicatorWindow _indicator;
     private long _lastDataVersion;
     private int _lastLevel = 1;
     private bool _loaded;
@@ -45,17 +46,8 @@ public partial class MainWindow : Window
     private PageKind? _page;
     private bool _pinned;
     private bool _collapsed;
-    private bool _animating;
-    private bool _hideRight;
     private int _expandedPhysLeft;
     private int _expandedPhysTop;
-    private int _slideFromX;
-    private int _slideToX;
-    private int _slideY;
-    private int _slideDuration;
-    private long _slideStart;
-    private bool _slideAccelerate;
-    private NativeMethods.RECT _activeWork;
 
     private enum PageKind { History, Settings, Editor }
 
@@ -71,17 +63,25 @@ public partial class MainWindow : Window
         ApplyScale();
 
         _pinned = store.GetSetting(PinKey) == "1";
+        _indicator = new EdgeIndicatorWindow();
+        _indicator.Hovered += () => ShowFromEdge(byHover: true);
+
         _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _collapseTimer.Tick += (_, _) =>
         {
             _collapseTimer.Stop();
-            if (_pinned || _collapsed || _animating || IsMouseOver) return;
-            Collapse();
+            if (_pinned || _collapsed || IsMouseOver) return;
+            HideToEdge();
         };
-        UpdatePinVisual();
 
-        _slideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(15) };
-        _slideTimer.Tick += SlideTimer_Tick;
+        _graceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _graceTimer.Tick += (_, _) =>
+        {
+            _graceTimer.Stop();
+            if (!_pinned && !_collapsed && !IsMouseOver) HideToEdge();
+        };
+
+        UpdatePinVisual();
 
         Loc.Instance.PropertyChanged += (_, e) =>
         {
@@ -115,7 +115,7 @@ public partial class MainWindow : Window
         };
         LocationChanged += (_, _) =>
         {
-            if (!_animating && !_collapsed)
+            if (!_collapsed)
             {
                 var rect = WindowRect();
                 _expandedPhysLeft = rect.Left;
@@ -149,7 +149,11 @@ public partial class MainWindow : Window
 
     public void ShowNote()
     {
-        if (_collapsed) Expand();
+        if (_collapsed)
+        {
+            ShowFromEdge(byHover: false);
+            return;
+        }
         if (!IsVisible) Show();
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
@@ -173,6 +177,8 @@ public partial class MainWindow : Window
         _exiting = true;
         _dataWatcher.Stop();
         _collapseTimer.Stop();
+        _graceTimer.Stop();
+        _indicator.Hide();
         SaveBounds();
         Close();
         System.Windows.Application.Current.Shutdown();
@@ -194,6 +200,9 @@ public partial class MainWindow : Window
         }
 
         e.Cancel = true;
+        _collapseTimer.Stop();
+        _graceTimer.Stop();
+        _indicator.Hide();
         SaveBounds();
         Hide();
     }
@@ -233,7 +242,7 @@ public partial class MainWindow : Window
     {
         if (!_loaded) return;
 
-        var rect = _collapsed || _animating
+        var rect = _collapsed
             ? new NativeMethods.RECT { Left = _expandedPhysLeft, Top = _expandedPhysTop }
             : WindowRect();
 
@@ -550,6 +559,8 @@ public partial class MainWindow : Window
     private void Hide_Click(object sender, RoutedEventArgs e)
     {
         _collapseTimer.Stop();
+        _graceTimer.Stop();
+        _indicator.Hide();
         SaveBounds();
         Hide();
     }
@@ -565,7 +576,8 @@ public partial class MainWindow : Window
         if (_pinned)
         {
             _collapseTimer.Stop();
-            if (_collapsed) Expand();
+            _graceTimer.Stop();
+            if (_collapsed) ShowFromEdge(byHover: false);
         }
         else if (!IsMouseOver)
         {
@@ -582,12 +594,13 @@ public partial class MainWindow : Window
     private void Window_MouseEnter(object sender, MouseEventArgs e)
     {
         _collapseTimer.Stop();
-        if (_collapsed && !_animating) Expand();
+        _graceTimer.Stop();
+        if (_collapsed) ShowFromEdge(byHover: true);
     }
 
     private void Window_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (_pinned || _collapsed || _animating) return;
+        if (_pinned || _collapsed) return;
         ScheduleCollapse();
     }
 
@@ -597,94 +610,62 @@ public partial class MainWindow : Window
         _collapseTimer.Start();
     }
 
-    private double StripWidth => 16 * _uiScale + 6;
-
-
-    private void Collapse()
+    /// <summary>把便签收成一个黄色感叹号，贴在它所在显示器的边缘。</summary>
+    private void HideToEdge()
     {
         if (_pinned || _collapsed) return;
 
-        var info = MonitorInfo();
-        var work = info.rcWork;
         var rect = WindowRect();
         _expandedPhysLeft = rect.Left;
         _expandedPhysTop = rect.Top;
 
-        var virtualScreen = System.Windows.Forms.SystemInformation.VirtualScreen;
-        var canHideRight = info.rcMonitor.Right >= virtualScreen.Right - 1;
-        var canHideLeft = info.rcMonitor.Left <= virtualScreen.Left + 1;
-        _hideRight = canHideRight != canHideLeft
-            ? canHideRight
-            : (rect.Left + rect.Right) / 2 >= (work.Left + work.Right) / 2;
-        _activeWork = work;
+        var monitor = NativeMethods.MonitorFromRect(ref rect, NativeMethods.MonitorDefaultToNearest);
+        var info = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
+        NativeMethods.GetMonitorInfo(monitor, ref info);
+        var work = info.rcWork;
 
         var dpi = WindowDpiScale();
-        var strip = (int)Math.Ceiling(StripWidth * dpi);
-        var width = rect.Right - rect.Left;
-        var target = _hideRight ? work.Right - strip : work.Left - width + strip;
+        var indicatorWidth = (int)Math.Ceiling(18 * dpi);
+        var indicatorHeight = (int)Math.Ceiling(44 * dpi);
+        var hideRight = (rect.Left + rect.Right) / 2 >= (work.Left + work.Right) / 2;
+        var x = hideRight ? work.Right - indicatorWidth : work.Left;
+        var maxY = Math.Max(work.Top, work.Bottom - indicatorHeight);
+        var y = Math.Clamp((rect.Top + rect.Bottom) / 2 - indicatorHeight / 2, work.Top, maxY);
 
-        EdgeTab.HorizontalAlignment = _hideRight ? System.Windows.HorizontalAlignment.Left : System.Windows.HorizontalAlignment.Right;
-        EdgeTab.Visibility = Visibility.Visible;
         _collapsed = true;
-        SlideTo(target, rect.Top, 220, accelerate: true);
+        _indicator.ShowAt(x, y);
+        FadeOutNote();
     }
 
-    private void Expand()
+    private void ShowFromEdge(bool byHover)
     {
         if (!_collapsed) return;
 
-        var work = _activeWork;
-        if (work.Right <= work.Left) work = MonitorInfo().rcWork;
-        var rect = WindowRect();
-        var width = rect.Right - rect.Left;
-        var target = _hideRight ? work.Right - width : work.Left;
-
-        EdgeTab.Visibility = Visibility.Collapsed;
+        _indicator.Hide();
         _collapsed = false;
-        SlideTo(target, rect.Top, 220, accelerate: false);
+        ShowNoteWindow();
+
+        _graceTimer.Stop();
+        if (byHover) _graceTimer.Start();
     }
 
-    private void SlideTo(int targetX, int targetY, int durationMs, bool accelerate)
+    private void ShowNoteWindow()
     {
-        _animating = true;
-        _slideFromX = WindowRect().Left;
-        _slideToX = targetX;
-        _slideY = targetY;
-        _slideDuration = durationMs;
-        _slideAccelerate = accelerate;
-        _slideStart = Stopwatch.GetTimestamp();
-        _slideTimer.Stop();
-        _slideTimer.Start();
+        if (!IsVisible) Show();
+        BeginAnimation(Window.OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(150)));
     }
 
-    private void SlideTimer_Tick(object? sender, EventArgs e)
+    private void FadeOutNote()
     {
-        var elapsed = (Stopwatch.GetTimestamp() - _slideStart) * 1000.0 / Stopwatch.Frequency;
-        var t = Math.Min(1.0, elapsed / _slideDuration);
-        var eased = _slideAccelerate ? t * t * t : 1 - Math.Pow(1 - t, 3);
-        var x = (int)Math.Round(_slideFromX + (_slideToX - _slideFromX) * eased);
-
-        NativeMethods.SetWindowPos(Handle, IntPtr.Zero, x, _slideY, 0, 0,
-            NativeMethods.SwpNoSize | NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
-
-        if (t < 1.0) return;
-
-        _slideTimer.Stop();
-        _animating = false;
-
-        if (_collapsed)
+        var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(120));
+        fade.Completed += (_, _) =>
         {
-            if (!_pinned && IsMouseOver) Expand();
-        }
-        else
-        {
-            var rect = WindowRect();
-            _expandedPhysLeft = rect.Left;
-            _expandedPhysTop = rect.Top;
-            if (!_pinned && !IsMouseOver) ScheduleCollapse();
-        }
-
-        ScheduleSave();
+            BeginAnimation(Window.OpacityProperty, null);
+            Opacity = 1;
+            if (_collapsed) Hide();
+        };
+        BeginAnimation(Window.OpacityProperty, fade);
     }
 
     private IntPtr Handle => new WindowInteropHelper(this).Handle;
@@ -693,14 +674,6 @@ public partial class MainWindow : Window
     {
         NativeMethods.GetWindowRect(Handle, out var rect);
         return rect;
-    }
-
-    private NativeMethods.MONITORINFO MonitorInfo()
-    {
-        var monitor = NativeMethods.MonitorFromWindow(Handle, NativeMethods.MonitorDefaultToNearest);
-        var info = new NativeMethods.MONITORINFO { cbSize = Marshal.SizeOf<NativeMethods.MONITORINFO>() };
-        NativeMethods.GetMonitorInfo(monitor, ref info);
-        return info;
     }
 
     private double WindowDpiScale()
