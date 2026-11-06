@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _collapseTimer;
     private readonly DispatcherTimer _graceTimer;
     private readonly EdgeIndicatorWindow _indicator;
+    private readonly EdgeAnimator _animator;
     private long _lastDataVersion;
     private int _lastLevel = 1;
     private bool _loaded;
@@ -48,6 +49,8 @@ public partial class MainWindow : Window
     private bool _collapsed;
     private int _expandedPhysLeft;
     private int _expandedPhysTop;
+    private bool _transitioning;
+    private bool _hideRight;
 
     private enum PageKind { History, Settings, Editor }
 
@@ -65,12 +68,13 @@ public partial class MainWindow : Window
         _pinned = store.GetSetting(PinKey) == "1";
         _indicator = new EdgeIndicatorWindow();
         _indicator.Hovered += () => ShowFromEdge(byHover: true);
+        _animator = new EdgeAnimator(NoteShell, TransitionLayer);
 
         _collapseTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _collapseTimer.Tick += (_, _) =>
         {
             _collapseTimer.Stop();
-            if (_pinned || _collapsed || IsMouseOver) return;
+            if (_pinned || _collapsed || _transitioning || IsMouseOver) return;
             HideToEdge();
         };
 
@@ -78,7 +82,7 @@ public partial class MainWindow : Window
         _graceTimer.Tick += (_, _) =>
         {
             _graceTimer.Stop();
-            if (!_pinned && !_collapsed && !IsMouseOver) HideToEdge();
+            if (!_pinned && !_collapsed && !_transitioning && !IsMouseOver) HideToEdge();
         };
 
         UpdatePinVisual();
@@ -595,12 +599,12 @@ public partial class MainWindow : Window
     {
         _collapseTimer.Stop();
         _graceTimer.Stop();
-        if (_collapsed) ShowFromEdge(byHover: true);
+        if (_collapsed && !_transitioning) ShowFromEdge(byHover: true);
     }
 
     private void Window_MouseLeave(object sender, MouseEventArgs e)
     {
-        if (_pinned || _collapsed) return;
+        if (_pinned || _collapsed || _transitioning) return;
         ScheduleCollapse();
     }
 
@@ -611,9 +615,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>把便签收成一个黄色感叹号，贴在它所在显示器的边缘。</summary>
-    private void HideToEdge()
+    private async void HideToEdge()
     {
-        if (_pinned || _collapsed) return;
+        if (_pinned || _collapsed || _transitioning) return;
+        _transitioning = true;
 
         var rect = WindowRect();
         _expandedPhysLeft = rect.Left;
@@ -627,45 +632,46 @@ public partial class MainWindow : Window
         var dpi = WindowDpiScale();
         var indicatorWidth = (int)Math.Ceiling(18 * dpi);
         var indicatorHeight = (int)Math.Ceiling(44 * dpi);
-        var hideRight = (rect.Left + rect.Right) / 2 >= (work.Left + work.Right) / 2;
-        var x = hideRight ? work.Right - indicatorWidth : work.Left;
+        _hideRight = (rect.Left + rect.Right) / 2 >= (work.Left + work.Right) / 2;
+        var x = _hideRight ? work.Right - indicatorWidth : work.Left;
         var maxY = Math.Max(work.Top, work.Bottom - indicatorHeight);
         var y = Math.Clamp((rect.Top + rect.Bottom) / 2 - indicatorHeight / 2, work.Top, maxY);
 
         _collapsed = true;
+        var animation = _animator.Resolve(_store.GetSetting("edge.animation"), _store.GetSetting("edge.pool"));
+        try
+        {
+            await _animator.HideAsync(animation, _hideRight);
+        }
+        finally
+        {
+            _transitioning = false;
+        }
+
         _indicator.ShowAt(x, y);
-        FadeOutNote();
+        Hide();
     }
 
-    private void ShowFromEdge(bool byHover)
+    private async void ShowFromEdge(bool byHover)
     {
-        if (!_collapsed) return;
-
+        if (!_collapsed || _transitioning) return;
+        _transitioning = true;
         _indicator.Hide();
         _collapsed = false;
-        ShowNoteWindow();
+        if (!IsVisible) Show();
+
+        var animation = _animator.Resolve(_store.GetSetting("edge.animation"), _store.GetSetting("edge.pool"));
+        try
+        {
+            await _animator.ShowAsync(animation, _hideRight);
+        }
+        finally
+        {
+            _transitioning = false;
+        }
 
         _graceTimer.Stop();
         if (byHover) _graceTimer.Start();
-    }
-
-    private void ShowNoteWindow()
-    {
-        if (!IsVisible) Show();
-        BeginAnimation(Window.OpacityProperty,
-            new System.Windows.Media.Animation.DoubleAnimation(0.4, 1, TimeSpan.FromMilliseconds(150)));
-    }
-
-    private void FadeOutNote()
-    {
-        var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(120));
-        fade.Completed += (_, _) =>
-        {
-            BeginAnimation(Window.OpacityProperty, null);
-            Opacity = 1;
-            if (_collapsed) Hide();
-        };
-        BeginAnimation(Window.OpacityProperty, fade);
     }
 
     private IntPtr Handle => new WindowInteropHelper(this).Handle;

@@ -209,7 +209,8 @@
 
   <!-- 像素外壳：深色描边 + 黄色边框 + 网格底 -->
   <Border x:Name="RootShell" Background="{StaticResource BgBrush}" Padding="3">
-      <Border Background="{StaticResource YellowBrush}" Padding="3">
+    <Grid>
+      <Border x:Name="NoteShell" Background="{StaticResource YellowBrush}" Padding="3">
         <Border Background="{StaticResource PanelGridBrush}">
           <Grid x:Name="Shell">
             <Grid.RowDefinitions>
@@ -443,5 +444,10 @@
           </Grid>
         </Border>
       </Border>
+
+      <!-- 收起/展开动画层 -->
+      <Canvas x:Name="TransitionLayer" Panel.ZIndex="200"
+              IsHitTestVisible="False" ClipToBounds="True" />
+    </Grid>
   </Border>
 </Window>

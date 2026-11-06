@@ -109,6 +109,12 @@ public sealed class Loc : INotifyPropertyChanged
         ["DeleteTooltip"] = "删除",
         ["PinOffTip"] = "固定展示（不自动贴边）",
         ["PinOnTip"] = "取消固定（自动贴边）",
+        ["EdgeAnimTitle"] = "收起动画",
+        ["EdgeAnimPool"] = "随机池",
+        ["EdgeAnimCollapse"] = "像素坍缩",
+        ["EdgeAnimGlitch"] = "故障",
+        ["EdgeAnimFade"] = "淡入淡出",
+        ["EdgeAnimRandom"] = "随机",
     };
 
     private static readonly Dictionary<string, string> English = new()
@@ -184,5 +190,11 @@ public sealed class Loc : INotifyPropertyChanged
         ["DeleteTooltip"] = "Delete",
         ["PinOffTip"] = "Keep open (no auto-hide)",
         ["PinOnTip"] = "Unpin (auto-hide)",
+        ["EdgeAnimTitle"] = "Edge animation",
+        ["EdgeAnimPool"] = "Random pool",
+        ["EdgeAnimCollapse"] = "Pixel collapse",
+        ["EdgeAnimGlitch"] = "Glitch",
+        ["EdgeAnimFade"] = "Fade",
+        ["EdgeAnimRandom"] = "Random",
     };
 }

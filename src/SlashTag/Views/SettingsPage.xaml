@@ -15,6 +15,16 @@
                 Style="{StaticResource PixelSecondaryButton}" Click="English_Click" />
       </StackPanel>
 
+      <TextBlock Text="{Binding [EdgeAnimTitle], Source={x:Static util:Loc.Instance}}"
+                 FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0" />
+      <WrapPanel x:Name="AnimationPanel" Margin="0,6,0,0" />
+
+      <StackPanel x:Name="PoolPanel" Margin="0,8,0,0" Visibility="Collapsed">
+        <TextBlock Text="{Binding [EdgeAnimPool], Source={x:Static util:Loc.Instance}}"
+                   FontSize="10.5" Foreground="{StaticResource MutedBrush}" />
+        <WrapPanel x:Name="PoolChecks" Margin="0,4,0,0" />
+      </StackPanel>
+
       <TextBlock Text="{Binding [StartupLabel], Source={x:Static util:Loc.Instance}}"
                  FontSize="10.5" Foreground="{StaticResource MutedBrush}" Margin="0,18,0,0" />
       <CheckBox x:Name="AutostartBox" Style="{StaticResource PixelCheckBox}"
